@@ -31,6 +31,7 @@
       if (saved.tier2Dock !== undefined) base.tier2Dock = !!saved.tier2Dock;
       if (saved.obeliskHp !== undefined) base.obeliskHp = saved.obeliskHp;
       if (saved.obeliskArmour !== undefined) base.obeliskArmour = saved.obeliskArmour;
+      if (saved.obeliskRelic !== undefined) base.obeliskRelic = saved.obeliskRelic;
       if (saved.cards) {
         if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
         if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
@@ -234,10 +235,11 @@
     host.innerHTML = '';
     var hp = IOM.parseNumber($('obelisk-hp').value);
     var armour = IOM.parseNumber($('obelisk-armour').value);
-    // Fight duration is a 60 second base plus obelisk_timer_add from the export,
-    // which lands exactly on the 1:13 the game shows.
+    // Wiki: fights start at 30 seconds, a legendary relic raises it, and the
+    // export carries obelisk_timer_add on top of that.
     var timerAdd = IOM.resolve(state).totals.obelisk_timer_add;
-    var duration = 60 + (isFinite(timerAdd) ? timerAdd : 0);
+    var relicBonus = IOM.parseNumber($('obelisk-relic').value);
+    var duration = 30 + (isFinite(relicBonus) ? relicBonus : 0) + (isFinite(timerAdd) ? timerAdd : 0);
     var m = IOM.obeliskModel(state, isFinite(hp) ? hp : 0, isFinite(armour) ? armour : 0, duration);
 
     var cards = document.createElement('div');
@@ -246,7 +248,7 @@
       { label: 'Average damage per hit', value: IOM.formatNumber(m.perHit) },
       { label: 'Damage per second', value: IOM.formatNumber(m.dps) },
       { label: 'Time to break', value: m.seconds === null ? '-' : IOM.formatDuration(m.seconds / 3600) },
-      { label: 'Fights needed', value: m.fights === null ? '-' : IOM.formatNumber(m.fights), sub: m.duration ? m.duration + 's per fight' : 'no fight length for this level' },
+      { label: 'Fights needed', value: m.fights === null ? '-' : IOM.formatNumber(m.fights), sub: m.duration ? m.duration + 's per fight (30 base + relic + timer)' : 'no fight length' },
     ].forEach(function (item) {
       var card = document.createElement('div');
       card.className = 'card';
@@ -988,6 +990,12 @@
   });
 
   $('obelisk-hp').value = state.obeliskHp || '';
+  $('obelisk-relic').value = state.obeliskRelic !== undefined ? state.obeliskRelic : '30';
+  $('obelisk-relic').addEventListener('input', function () {
+    state.obeliskRelic = $('obelisk-relic').value;
+    save();
+    renderObelisk();
+  });
   $('obelisk-armour').value = state.obeliskArmour || '';
   prefillObelisk();
   ['obelisk-hp', 'obelisk-armour'].forEach(function (id) {
