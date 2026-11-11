@@ -28,6 +28,7 @@
       if (saved.w3SpeedFix !== undefined) base.w3SpeedFix = !!saved.w3SpeedFix;
       if (isFinite(Number(saved.vein2x))) base.vein2x = Number(saved.vein2x);
       if (saved.voidDrone !== undefined) base.voidDrone = !!saved.voidDrone;
+      if (saved.tier2Dock !== undefined) base.tier2Dock = !!saved.tier2Dock;
       if (saved.cards) {
         if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
         if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
@@ -147,7 +148,7 @@
       ['Drone capacity', IOM.formatNumber(m.capacity)],
       ['Drone power', IOM.formatNumber(m.dronePower)],
       ['Drone multiplier', IOM.formatNumber(m.droneMulti) + 'x'],
-      ['Dock multiplier', IOM.formatNumber(m.dock) + 'x'],
+      ['Dock power', IOM.formatNumber(m.dock) + 'x' + (m.tier2Dock ? ' (tier 2)' : ' (not applied)')],
       ['Shiny chance / multi', (m.shiny * 100).toFixed(1) + '% at ' + IOM.formatNumber(m.shinyMulti) + 'x'],
       ['Super shiny chance / multi', (m.superShiny * 100).toFixed(1) + '% at ' + IOM.formatNumber(m.superMulti) + 'x'],
       ['Income multiplier', IOM.formatNumber(m.income) + 'x'],
@@ -161,6 +162,23 @@
     table.appendChild(body);
     wrap.appendChild(table);
     host.appendChild(wrap);
+
+    var dockWrap = document.createElement('label');
+    dockWrap.className = 'check';
+    dockWrap.style.display = 'inline-flex';
+    dockWrap.style.gap = '8px';
+    dockWrap.style.margin = '0 0 14px';
+    var dockBox = document.createElement('input');
+    dockBox.type = 'checkbox';
+    dockBox.checked = !!state.tier2Dock;
+    dockBox.addEventListener('change', function () {
+      state.tier2Dock = dockBox.checked;
+      save();
+      renderFishing();
+    });
+    dockWrap.appendChild(dockBox);
+    dockWrap.appendChild(document.createTextNode('Fishing a tier 2 dock'));
+    host.insertBefore(dockWrap, wrap);
 
     var note = document.createElement('p');
     note.className = 'hint';

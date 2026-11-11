@@ -76,6 +76,7 @@
     fishing_super_shiny_multi: 'multi',
     fishing_tick_speed: 'number',
     fishing_tick_reduction_seconds: 'number',
+    fishing_income_multi: 'multi',
   };
 
   Object.keys(FISH_STATS).forEach(function (name) {
@@ -184,6 +185,7 @@
       worldsUnlocked: null,
       vein2x: 0,
       voidDrone: false,
+      tier2Dock: true,
       veinMorph: 0.143,
       veinGolden: 0.143,
       w3SpeedFix: true,
@@ -706,7 +708,10 @@
     var capacity = num(t.fishing_drone_capacity, 0);
     var dronePower = num(t.fishing_drone_power, 0);
     var droneMulti = num(t.fishing_drone_multiplier, 1);
-    var dock = Math.max(1, num(t.fishing_tier2_dock_multi, 1));
+    // fishing_tier2_dock_multi is the tier 2 dock power, so it only applies
+    // while you are fishing a tier 2 dock. Other docks carry their own power,
+    // which the export does not include.
+    var dock = state.tier2Dock ? Math.max(1, num(t.fishing_tier2_dock_multi, 1)) : 1;
     var income = num(t.fishing_income_multi, 1);
 
     var valuePerTick = (rod + capacity * dronePower * droneMulti) * dock;
@@ -741,6 +746,7 @@
       dronePower: dronePower,
       droneMulti: droneMulti,
       dock: dock,
+      tier2Dock: !!state.tier2Dock,
       shiny: shiny,
       shinyMulti: shinyMulti,
       superShiny: superShiny,
