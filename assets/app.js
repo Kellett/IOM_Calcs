@@ -22,6 +22,11 @@
       if (saved.bomb) base.bomb = saved.bomb;
       if (saved.worldsUnlocked !== undefined) base.worldsUnlocked = saved.worldsUnlocked;
       if (saved.showLockedOres) base.showLockedOres = true;
+      if (isFinite(Number(saved.veinMorph))) base.veinMorph = Number(saved.veinMorph);
+      if (isFinite(Number(saved.veinGolden))) base.veinGolden = Number(saved.veinGolden);
+      if (isFinite(Number(saved.w4SpeedMod))) base.w4SpeedMod = Number(saved.w4SpeedMod);
+      if (saved.w3SpeedFix !== undefined) base.w3SpeedFix = !!saved.w3SpeedFix;
+      if (isFinite(Number(saved.vein2x))) base.vein2x = Number(saved.vein2x);
       if (saved.cards) {
         if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
         if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
@@ -138,8 +143,28 @@
     select.value = kept ? keep : (first || '');
   }
 
+  function fillVeinSelect(select) {
+    var keep = select.value;
+    var first = null;
+    var kept = false;
+    select.innerHTML = '';
+    DATA.veins.forEach(function (vein) {
+      var unlocked = !state.worldsUnlocked || vein.world <= state.worldsUnlocked;
+      if (!unlocked && !state.showLockedOres) return;
+      var value = vein.name;
+      if (first === null) first = value;
+      var opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = unlocked ? vein.name : vein.name + ' (locked)';
+      select.appendChild(opt);
+      if (value === keep) kept = true;
+    });
+    select.value = kept ? keep : (first || '');
+  }
+
   function refreshOreSelects() {
     fillOreSelect($('floor-ore'), true);
+    fillVeinSelect($('floor-vein'));
     fillOreSelect($('farm-ore'), false);
     document.querySelectorAll('.ore-locked').forEach(function (box) {
       box.checked = !!state.showLockedOres;
@@ -295,7 +320,81 @@
 
   // ------------------------------------------------------------- best floor
 
+  function renderVeinFloor() {
+    var host = $('floor-results');
+    var vein = IOM.veinByName($('floor-vein').value);
+    host.innerHTML = '';
+    if (!vein) {
+      host.textContent = 'Pick a vein.';
+      return;
+    }
+
+    var model = IOM.veinModel(state, vein);
+    var best = model.rows[0];
+    if (!best) {
+      host.textContent = 'No floors for that vein.';
+      return;
+    }
+
+    var cards = document.createElement('div');
+    cards.className = 'cards';
+    [
+      { label: 'Best floor', value: String(best.floorId), sub: vein.name },
+      { label: 'Veins per hour', value: IOM.formatNumber(best.rate) },
+      { label: 'Veins per screen', value: IOM.formatNumber(model.veinsPerScreen) },
+      { label: 'Variant multiplier', value: IOM.formatNumber(model.variant) + 'x' },
+    ].forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = item.label;
+      var value = document.createElement('div');
+      value.className = 'value';
+      value.textContent = item.value;
+      card.appendChild(label);
+      card.appendChild(value);
+      if (item.sub) {
+        var sub = document.createElement('p');
+        sub.className = 'sub';
+        sub.textContent = item.sub;
+        card.appendChild(sub);
+      }
+      cards.appendChild(card);
+    });
+    host.appendChild(cards);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    var table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Rank</th><th>Floor</th><th>Vein</th>' +
+      '<th class="num">Veins/hr</th></tr></thead>';
+    var body = document.createElement('tbody');
+    model.rows.forEach(function (row, index) {
+      var tr = document.createElement('tr');
+      cell(tr, String(index + 1));
+      cell(tr, String(row.floorId));
+      cell(tr, vein.name);
+      cell(tr, IOM.formatNumber(row.rate), 'num');
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    wrap.appendChild(table);
+    host.appendChild(wrap);
+
+    var note = document.createElement('p');
+    note.className = 'hint';
+    note.style.marginTop = '14px';
+    note.textContent = vein.name + ' runs floors ' + vein.firstFloor + ' to ' + vein.lastFloor +
+      ' at rarity ' + vein.rarity + '. Rates assume no void portals, which matches an export with void portal chance at zero.';
+    host.appendChild(note);
+  }
+
   function renderFloors() {
+    if ($('floor-mode').value === 'vein') {
+      renderVeinFloor();
+      return;
+    }
     var selected = $('floor-ore').value;
     var anyOre = selected === ANY_ORE;
     var oreId = Number(selected);
@@ -568,8 +667,36 @@
     refreshAll();
   });
 
-  ['floor-ore', 'floor-metric', 'floor-void'].forEach(function (id) {
+  ['floor-ore', 'floor-metric', 'floor-void', 'floor-vein'].forEach(function (id) {
     $(id).addEventListener('change', renderFloors);
+  });
+
+  $('floor-mode').addEventListener('change', function () {
+    var veins = $('floor-mode').value === 'vein';
+    $('floor-vein-label').style.display = veins ? '' : 'none';
+    $('floor-ore-label').style.display = veins ? 'none' : '';
+    $('floor-metric-label').style.display = veins ? 'none' : '';
+    renderFloors();
+  });
+
+  [['vein-morph', 'veinMorph'], ['vein-golden', 'veinGolden'], ['w4-speed', 'w4SpeedMod']].forEach(function (pair) {
+    $(pair[0]).value = String(state[pair[1]]);
+    $(pair[0]).addEventListener('change', function () {
+      var value = IOM.parseNumber($(pair[0]).value);
+      if (!isFinite(value)) { $(pair[0]).value = String(state[pair[1]]); return; }
+      state[pair[1]] = value / 100;
+      if (pair[1] === 'w4SpeedMod') state[pair[1]] = value;
+      save();
+      recalc();
+      renderFloors();
+    });
+  });
+  $('w3-speed').checked = !!state.w3SpeedFix;
+  $('w3-speed').addEventListener('change', function () {
+    state.w3SpeedFix = $('w3-speed').checked;
+    save();
+    recalc();
+    renderFloors();
   });
   ['farm-ore', 'farm-amount', 'farm-unit', 'farm-void'].forEach(function (id) {
     $(id).addEventListener('input', renderFarm);

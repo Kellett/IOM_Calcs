@@ -40,6 +40,23 @@ bar/hr    = craft/hr + trans/hr
 gold/hr   = bar/hr × bar value × bar card
 ```
 
+### Veins
+
+Veins are zone based, not ore based. Each of the 21 zones has a floor range, a
+rarity and a range of ore indices, and the rate is:
+
+```
+veins/screen = morph% x oresPerScreen + (1 - morph%) x MIN(oresPerScreen, spawnRate x research / rarity)
+variant      = golden / rainbow / gleaming chain
+veins/hr     = veins/screen x 2880 x gameSpeed x floorSpeed x income x variant
+```
+
+`floorSpeed` is the sheet's step ladder (0.75 on floors 71-72, 89-92 and 97-98, 0.7 on 119-120, 0.6 on 121-124) with the World 3 and World 4 modifiers on top. 2x research comes from `vein_2x_spawn_array` in the export and covers that many zones in order, which is what the sheet's per-world ticks amount to.
+
+Ported from the Best Veins tab of v3.3.6 and checked against that sheet's own output for Neon Vein: veins per screen `3.050513544` and every in-zone floor matching to 2.6e-11.
+
+Void portal weighting for veins is not ported. It only matters when `void_portal_chance` is above zero, and the export used to validate this had it at zero.
+
 ### Bombs
 
 Bomb of Plenty multiplies the ore you dig, which then gets crafted. The Transmuter

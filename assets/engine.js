@@ -41,11 +41,28 @@
     });
   });
 
+  // Vein stats are not in the Stat table but the export carries them.
+  var VEIN_STATS = {
+    vein_spawn_rate_multi: 'multi',
+    vein_income_multi: 'multi',
+    golden_vein_chance: 'chance',
+    golden_vein_multi: 'multi',
+    rainbow_vein_chance: 'chance',
+    rainbow_vein_multi: 'multi',
+    gleaming_vein_chance: 'chance',
+    gleaming_vein_multi: 'multi',
+  };
+
   var replaceDefaults = new Map(DATA.replaceDefaults.map(function (d) { return [d.name, d.value]; }));
   var SUFFIX = new Map();
   DATA.notation.forEach(function (n) {
     if (n.short) SUFFIX.set(String(n.short).toLowerCase(), n.value);
   });
+  Object.keys(VEIN_STATS).forEach(function (name) {
+    if (meta.has(name)) return;
+    meta.set(name, { name: name, group: 'Veins', type: VEIN_STATS[name] });
+  });
+
   var NOTATION = DATA.notation.slice().sort(function (a, b) { return b.value - a.value; });
 
   function num(v, fallback) {
@@ -118,6 +135,11 @@
       bomb: 'none',
       exportFloor: num(params.exportFloor, 1),
       worldsUnlocked: null,
+      vein2x: 0,
+      veinMorph: 0.143,
+      veinGolden: 0.143,
+      w3SpeedFix: true,
+      w4SpeedMod: 0.8,
       showLockedOres: false,
       // The export already contains everything you had equipped, so every
       // adjustment starts switched off and the totals match the game.
@@ -173,6 +195,9 @@
 
     if (isFinite(num(parsed.stats.current_floor, NaN))) {
       state.exportFloor = num(parsed.stats.current_floor, state.exportFloor);
+    }
+    if (isFinite(num(parsed.stats.vein_2x_spawn_array, NaN))) {
+      state.vein2x = num(parsed.stats.vein_2x_spawn_array, 0);
     }
     if (isFinite(num(parsed.stats.worlds_unlocked, NaN))) {
       state.worldsUnlocked = num(parsed.stats.worlds_unlocked, 0);
@@ -507,6 +532,75 @@
     };
   }
 
+  // Floor speed penalties from the sheet's IFS ladder, then the world 3 and 4
+  // modifiers, which were manual switches there too.
+  var SPEED_STEPS = [[70, 1], [72, 0.75], [88, 1], [92, 0.75], [96, 1], [98, 0.75], [102, 1], [118, 1], [120, 0.7], [124, 0.6]];
+
+  function veinSpeed(floor, state) {
+    var factor = 1;
+    for (var i = 0; i < SPEED_STEPS.length; i++) {
+      if (floor <= SPEED_STEPS[i][0]) { factor = SPEED_STEPS[i][1]; break; }
+    }
+    if (floor >= 73 && floor <= 102) factor *= state.w3SpeedFix ? 1 : 0.7;
+    if (floor >= 103) factor *= 1 - num(state.w4SpeedMod, 0);
+    return factor;
+  }
+
+  function veinModel(state, vein) {
+    var totals = resolve(state).totals;
+    var morphChance = clamp01(num(state.veinMorph, 0));
+    var morphGolden = clamp01(num(state.veinGolden, 0));
+
+    var perScreen = num(totals.ores_per_screen, 0);
+    var spawn = num(totals.vein_spawn_rate_multi, 1);
+    var income = num(totals.vein_income_multi, 1);
+    var rarity = Math.max(1, num(vein.rarity, 1));
+    // The 2x research tick count comes from the export; it covers that many
+    // veins in zone order, which is how the sheet's world toggles behave.
+    var zoneIndex = DATA.veins.indexOf(vein) + 1;
+    var research = zoneIndex > 0 && zoneIndex <= num(state.vein2x, 0) ? 2 : 1;
+    var veinsPerScreen = morphChance * perScreen
+      + (1 - morphChance) * Math.min(perScreen, spawn * research / rarity);
+
+    var goldChance = clamp01(num(totals.golden_vein_chance, 0));
+    var goldMulti = Math.max(1, num(totals.golden_vein_multi, 1));
+    var rainbowChance = clamp01(num(totals.rainbow_vein_chance, 0));
+    var rainbowMulti = Math.max(1, num(totals.rainbow_vein_multi, 1));
+    var gleamChance = clamp01(num(totals.gleaming_vein_chance, 0));
+    var gleamMulti = Math.max(1, num(totals.gleaming_vein_multi, 1));
+
+    var variant = (morphGolden * goldMulti * (1 + goldChance * rainbowChance * (rainbowMulti - 1))
+      + (1 - morphGolden) * ((1 - goldChance)
+        + goldChance * (1 - rainbowChance) * goldMulti
+        + goldChance * rainbowChance * goldMulti * rainbowMulti))
+      * ((1 - gleamChance) + gleamChance * gleamMulti);
+
+    var rows = [];
+    for (var floor = vein.firstFloor; floor <= vein.lastFloor; floor++) {
+      var rate = veinsPerScreen
+        * num(params.floorsPerHour, 0)
+        * num(totals.game_speed_multi, 1)
+        * veinSpeed(floor, state)
+        * income
+        * variant;
+      rows.push({ floorId: floor, rate: rate });
+    }
+
+    return {
+      veinsPerScreen: veinsPerScreen,
+      variant: variant,
+      income: income,
+      rows: rows.sort(function (a, b) { return b.rate - a.rate; }),
+    };
+  }
+
+  function veinByName(name) {
+    for (var i = 0; i < DATA.veins.length; i++) {
+      if (DATA.veins[i].name === name) return DATA.veins[i];
+    }
+    return null;
+  }
+
   function formatNumber(v) {
     if (!isFinite(v)) return '-';
     var a = Math.abs(v);
@@ -567,6 +661,8 @@
     oreEm: oreEm,
     oreCardOf: oreCardOf,
     isOreUnlocked: isOreUnlocked,
+    veinModel: veinModel,
+    veinByName: veinByName,
     oreFirstFloor: oreFirstFloor,
     oreWorld: oreWorld,
     barCardOf: barCardOf,
