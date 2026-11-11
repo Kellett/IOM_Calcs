@@ -71,9 +71,9 @@ The formulas are ported from the community spreadsheet (`Main`, `Floors` and
 engine over the sheet's own per-floor stats reproduces all 528 rows for ore,
 craft, transmute, bar and gold per hour to within 0.001%.
 
-`assets/data.js` is generated from that workbook by `tools/build-data.py`, which
-needs an `export?format=xlsx` copy of the sheet unpacked next to it. Do not edit
-`data.js` by hand.
+`assets/data.js` was extracted once from that workbook: ores, floors, floor
+debuffs, the mod source list and the notation table. Do not edit it by hand. It only
+needs regenerating if a game update adds floors or ores.
 
 ## Known limits
 
