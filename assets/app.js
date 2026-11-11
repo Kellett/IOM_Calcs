@@ -224,15 +224,17 @@
     host.innerHTML = '';
     var hp = IOM.parseNumber($('obelisk-hp').value);
     var armour = IOM.parseNumber($('obelisk-armour').value);
-    var m = IOM.obeliskModel(state, isFinite(hp) ? hp : 0, isFinite(armour) ? armour : 0);
+    var known = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1) : null;
+    var duration = known ? known.duration : 0;
+    var m = IOM.obeliskModel(state, isFinite(hp) ? hp : 0, isFinite(armour) ? armour : 0, duration);
 
     var cards = document.createElement('div');
     cards.className = 'cards';
     [
       { label: 'Average damage per hit', value: IOM.formatNumber(m.perHit) },
       { label: 'Damage per second', value: IOM.formatNumber(m.dps) },
-      { label: 'Attacks to break', value: m.attacks === null ? (m.blocked ? 'armour too high' : '-') : IOM.formatNumber(m.attacks) },
       { label: 'Time to break', value: m.seconds === null ? '-' : IOM.formatDuration(m.seconds / 3600) },
+      { label: 'Fights needed', value: m.fights === null ? '-' : IOM.formatNumber(m.fights), sub: m.duration ? m.duration + 's per fight' : 'no fight length for this level' },
     ].forEach(function (item) {
       var card = document.createElement('div');
       card.className = 'card';
@@ -974,6 +976,15 @@
 
   $('obelisk-hp').value = state.obeliskHp || '';
   $('obelisk-armour').value = state.obeliskArmour || '';
+  (function prefillObelisk() {
+    if (state.obeliskHp || state.obeliskArmour) return;
+    var next = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1) : null;
+    if (!next) return;
+    state.obeliskHp = String(next.hp);
+    state.obeliskArmour = String(next.armour);
+    $('obelisk-hp').value = state.obeliskHp;
+    $('obelisk-armour').value = state.obeliskArmour;
+  })();
   ['obelisk-hp', 'obelisk-armour'].forEach(function (id) {
     $(id).addEventListener('input', function () {
       var value = $(id).value;

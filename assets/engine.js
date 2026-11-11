@@ -208,6 +208,7 @@
       vein2x: 0,
       voidDrone: false,
       tier2Dock: true,
+      obeliskLevel: null,
       veinMorph: 0.143,
       veinGolden: 0.143,
       w3SpeedFix: true,
@@ -267,6 +268,9 @@
 
     if (isFinite(num(parsed.stats.current_floor, NaN))) {
       state.exportFloor = num(parsed.stats.current_floor, state.exportFloor);
+    }
+    if (isFinite(num(parsed.stats.obelisk_level, NaN))) {
+      state.obeliskLevel = num(parsed.stats.obelisk_level, 0);
     }
     if ('is_drone_void_equipped' in parsed.stats) {
       state.voidDrone = !!num(parsed.stats.is_drone_void_equipped, 0);
@@ -806,7 +810,13 @@
 
   // Obelisk damage. Crits roll in sequence: you only reach a super crit if the
   // crit roll passed, and so on, which is why the chances multiply.
-  function obeliskModel(state, hp, armor) {
+  function obeliskLookup(level) {
+    var list = DATA.obelisks || [];
+    for (var i = 0; i < list.length; i++) if (list[i].level === level) return list[i];
+    return null;
+  }
+
+  function obeliskModel(state, hp, armor, duration) {
     var t = resolve(state).totals;
     var damage = num(t.pickaxe_damage, 0);
     var speed = num(t.pickaxe_attack_speed_per_second, 0);
@@ -844,9 +854,15 @@
     var perHit = average;
     var attacks = null;
     var seconds = null;
+    var perFight = null;
+    var fights = null;
     if (hp > 0 && perHit > 0) {
       attacks = Math.ceil(hp / perHit);
       seconds = speed > 0 ? attacks / speed : null;
+      if (duration > 0) {
+        perFight = perHit * speed * duration;
+        fights = Math.ceil(hp / perFight);
+      }
     }
 
     return {
@@ -859,6 +875,9 @@
       base: base,
       attacks: attacks,
       seconds: seconds,
+      perFight: perFight,
+      fights: fights,
+      duration: duration,
       blocked: blocked,
     };
   }
@@ -926,6 +945,7 @@
     veinModel: veinModel,
     fishingModel: fishingModel,
     obeliskModel: obeliskModel,
+    obeliskLookup: obeliskLookup,
     MATHS_STATS: MATHS_STATS,
     DRIVEN_STATS: DRIVEN_STATS,
     veinByName: veinByName,
