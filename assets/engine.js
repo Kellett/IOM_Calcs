@@ -63,6 +63,26 @@
     meta.set(name, { name: name, group: 'Veins', type: VEIN_STATS[name] });
   });
 
+  var FISH_STATS = {
+    fishing_rod_power: 'number',
+    fishing_drone_capacity: 'number',
+    fishing_drone_power: 'number',
+    fishing_drone_multiplier: 'multi',
+    fishing_tier2_dock_multi: 'multi',
+    fishing_income_multi: 'multi',
+    fishing_shiny_chance: 'chance',
+    fishing_shiny_multi: 'multi',
+    fishing_super_shiny_chance: 'chance',
+    fishing_super_shiny_multi: 'multi',
+    fishing_tick_speed: 'number',
+    fishing_tick_reduction_seconds: 'number',
+  };
+
+  Object.keys(FISH_STATS).forEach(function (name) {
+    if (meta.has(name)) return;
+    meta.set(name, { name: name, group: 'Fishing', type: FISH_STATS[name] });
+  });
+
   var NOTATION = DATA.notation.slice().sort(function (a, b) { return b.value - a.value; });
 
   function num(v, fallback) {
@@ -650,6 +670,59 @@
     return null;
   }
 
+  // Fishing. Value per tick and the variant chain are the sheet's, both of
+  // which reproduce its own output exactly. The tick interval depends on how
+  // fishing_tick_speed is meant to be read, so it is reported rather than hidden.
+  function fishingModel(state) {
+    var t = resolve(state).totals;
+    var rod = num(t.fishing_rod_power, 0);
+    var capacity = num(t.fishing_drone_capacity, 0);
+    var dronePower = num(t.fishing_drone_power, 0);
+    var droneMulti = num(t.fishing_drone_multiplier, 1);
+    var dock = Math.max(1, num(t.fishing_tier2_dock_multi, 1));
+    var income = num(t.fishing_income_multi, 1);
+
+    var valuePerTick = (rod + capacity * dronePower * droneMulti) * dock;
+
+    var shiny = clamp01(num(t.fishing_shiny_chance, 0));
+    var shinyMulti = Math.max(1, num(t.fishing_shiny_multi, 1));
+    var superShiny = clamp01(num(t.fishing_super_shiny_chance, 0));
+    var superMulti = Math.max(1, num(t.fishing_super_shiny_multi, 1));
+
+    var variants = (1 - shiny)
+      + shiny * (1 - superShiny) * shinyMulti
+      + shiny * superShiny * shinyMulti * superMulti;
+    var perTick = valuePerTick * income * variants;
+
+    // 60 seconds base, less the flat reductions, divided by the speed as a
+    // percentage. Floor of half a second so a silly export cannot divide by zero.
+    var base = 60;
+    var reduction = num(t.fishing_tick_reduction_seconds, 0);
+    var speed = Math.max(1, num(t.fishing_tick_speed, 100)) / 100;
+    var interval = Math.max(0.05, (base - reduction) / speed);
+
+    return {
+      valuePerTick: valuePerTick,
+      variants: variants,
+      income: income,
+      perTick: perTick,
+      interval: interval,
+      ticksPerHour: 3600 / interval,
+      fishPerHour: perTick * (3600 / interval),
+      rod: rod,
+      capacity: capacity,
+      dronePower: dronePower,
+      droneMulti: droneMulti,
+      dock: dock,
+      shiny: shiny,
+      shinyMulti: shinyMulti,
+      superShiny: superShiny,
+      superMulti: superMulti,
+      speed: speed,
+      reduction: reduction,
+    };
+  }
+
   function formatNumber(v) {
     if (!isFinite(v)) return '-';
     var a = Math.abs(v);
@@ -711,6 +784,7 @@
     oreCardOf: oreCardOf,
     isOreUnlocked: isOreUnlocked,
     veinModel: veinModel,
+    fishingModel: fishingModel,
     veinByName: veinByName,
     oreFirstFloor: oreFirstFloor,
     oreWorld: oreWorld,

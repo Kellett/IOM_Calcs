@@ -104,6 +104,71 @@
     select.addEventListener('change', function () { applyBomb(select.value); });
   }
 
+  function renderFishing() {
+    var host = $('fishing-results');
+    host.innerHTML = '';
+    var m = IOM.fishingModel(state);
+
+    var cards = document.createElement('div');
+    cards.className = 'cards';
+    [
+      { label: 'Fish per hour', value: IOM.formatNumber(m.fishPerHour) },
+      { label: 'Fish per tick', value: IOM.formatNumber(m.perTick) },
+      { label: 'Tick interval', value: m.interval.toFixed(3) + 's', sub: Math.round(m.ticksPerHour) + ' ticks/hour' },
+      { label: 'Variants', value: m.variants.toFixed(2) + 'x', sub: 'shiny and super shiny' },
+    ].forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = item.label;
+      var value = document.createElement('div');
+      value.className = 'value';
+      value.textContent = item.value;
+      card.appendChild(label);
+      card.appendChild(value);
+      if (item.sub) {
+        var sub = document.createElement('p');
+        sub.className = 'sub';
+        sub.textContent = item.sub;
+        card.appendChild(sub);
+      }
+      cards.appendChild(card);
+    });
+    host.appendChild(cards);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    var table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Input</th><th class="num">Value</th></tr></thead>';
+    var body = document.createElement('tbody');
+    [
+      ['Rod power', IOM.formatNumber(m.rod)],
+      ['Drone capacity', IOM.formatNumber(m.capacity)],
+      ['Drone power', IOM.formatNumber(m.dronePower)],
+      ['Drone multiplier', IOM.formatNumber(m.droneMulti) + 'x'],
+      ['Dock multiplier', IOM.formatNumber(m.dock) + 'x'],
+      ['Shiny chance / multi', (m.shiny * 100).toFixed(1) + '% at ' + IOM.formatNumber(m.shinyMulti) + 'x'],
+      ['Super shiny chance / multi', (m.superShiny * 100).toFixed(1) + '% at ' + IOM.formatNumber(m.superMulti) + 'x'],
+      ['Income multiplier', IOM.formatNumber(m.income) + 'x'],
+      ['Tick speed / reduction', IOM.formatNumber(m.speed * 100) + '% and ' + IOM.formatNumber(m.reduction) + 's'],
+    ].forEach(function (pair) {
+      var tr = document.createElement('tr');
+      cell(tr, pair[0]);
+      cell(tr, pair[1], 'num');
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    wrap.appendChild(table);
+    host.appendChild(wrap);
+
+    var note = document.createElement('p');
+    note.className = 'hint';
+    note.style.marginTop = '14px';
+    note.textContent = 'Tick interval is (60 seconds minus your flat reduction) divided by tick speed as a percentage. Value per tick and the shiny chain are checked against the source sheet exactly; the tick interpretation is ours, so if the game disagrees this is the one number to correct.';
+    host.appendChild(note);
+  }
+
   function renderStatus() {
     var node = $('status');
     if (!state.version) {
@@ -185,6 +250,23 @@
   function renderStats() {
     var body = document.querySelector('#stat-table tbody');
     body.innerHTML = '';
+
+    var manual = DATA.stats.filter(function (stat) { return !state.fromExport[stat.name]; });
+    // The bomb chances are driven by the bomb pick on Loadout, not typed in.
+    var driven = { bomb_of_plenty_chance: 1, bomb_transmuter_chance: 1 };
+    var empty = manual.filter(function (stat) {
+      return !driven[stat.name] && !IOM.resolve(state).totals[stat.name];
+    });
+    var summary = $('stat-summary');
+    if (!state.version) {
+      summary.textContent = '';
+    } else if (!manual.length) {
+      summary.textContent = 'All ' + DATA.stats.length + ' tracked stats came from your export. Nothing to fill in.';
+    } else {
+      summary.textContent = manual.length + ' of ' + DATA.stats.length + ' stats were not in your export' +
+        (empty.length ? ', and ' + empty.length + ' of those are still zero: ' + empty.slice(0, 6).map(function (s2) { return s2.name; }).join(', ') + (empty.length > 6 ? ', ...' : '') : '') +
+        '. Type over any of them below.';
+    }
 
     DATA.stats.forEach(function (stat) {
       var tr = document.createElement('tr');
@@ -636,6 +718,7 @@
     renderFloors();
     renderFarm();
     renderBomb();
+    renderFishing();
   }
 
   function showTab(name) {
@@ -661,9 +744,15 @@
       recalc();
       refreshAll();
       report.className = 'notice ok';
+      var missing = DATA.stats.filter(function (stat) { return !state.fromExport[stat.name]; });
       report.textContent = 'Imported ' + result.known.length + ' stats from ' + (parsed.version || 'the export') + '.';
+      if (missing.length) {
+        report.textContent += ' ' + missing.length + ' tracked stats were not in the export and are marked manual on the Stats tab.';
+      } else {
+        report.textContent += ' Every tracked stat came through, nothing to fill in.';
+      }
       if (result.unknown.length) {
-        report.textContent += ' ' + result.unknown.length + ' keys are not used by this calculator yet.';
+        report.textContent += ' ' + result.unknown.length + ' keys are not used yet.';
       }
     } catch (err) {
       report.className = 'notice';

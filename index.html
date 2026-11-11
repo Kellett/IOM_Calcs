@@ -23,6 +23,7 @@
   <button data-tab="floors">Best floor</button>
   <button data-tab="farm">Farm time</button>
   <button data-tab="bomb">Bomb</button>
+  <button data-tab="fishing">Fishing</button>
   <button data-tab="about">About</button>
 </nav>
 
@@ -41,6 +42,7 @@
 
   <section id="panel-stats" class="panel">
     <h2>Stats</h2>
+    <p id="stat-summary" class="hint"></p>
     <p class="hint">These come from your export. Anything the game does not export is marked manual and can be typed over. Bars, drones and cards live on the Loadout tab.</p>
     <div class="table-scroll">
       <table id="stat-table">
@@ -55,7 +57,8 @@
 
   <section id="panel-loadout" class="panel">
     <h2>Loadout</h2>
-    <p class="hint">Everything the sheet used to make you fill in by hand. At export is how the game had it when you copied the export, In calc is what you want the numbers to assume. Changing In calc is how you test a swap without doing it in game.</p>
+    <p class="hint"><strong>The export already includes everything you had equipped</strong>, so every adjustment here starts switched off and the numbers match the game exactly. Nothing on this page needs touching to get correct rates.</p>
+    <p class="hint">It is for "what if" questions. Each row is one thing that changes a stat: a drone, a bomb, an item. <strong>At export</strong> is whether the game had it when you copied the export. <strong>In calc</strong> is whether you want the maths to assume it. Leave them equal and the row does nothing. Tick In calc on something you did not have, and the rates change as if you had it.</p>
     <div class="controls">
       <label>Bomb in use <select id="bomb-in-use"></select></label>
       <label>Ore card <input id="card-ore" type="text" inputmode="decimal"></label>
@@ -114,6 +117,12 @@
     <h2>Which bomb</h2>
     <p class="hint">Bomb of Plenty multiplies the ore you dig, so the extra ore gets crafted. The Transmuter drops bars directly and can also stamp a BoP stack on the rock. Which one wins comes down to how many ore a bar costs, so the crossover follows the ore tier rather than the floor number.</p>
     <div id="bomb-results"></div>
+  </section>
+
+  <section id="panel-fishing" class="panel">
+    <h2>Fishing</h2>
+    <p class="hint">Worked out from your export: rod power, drone army, dock, shiny chains and tick rate. Nothing to fill in.</p>
+    <div id="fishing-results"></div>
   </section>
 
   <section id="panel-about" class="panel">
