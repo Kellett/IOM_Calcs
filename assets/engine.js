@@ -387,6 +387,13 @@
       .sort(function (a, b) { return b[key] - a[key]; });
   }
 
+  function rankAll(rows, metric, useVoid) {
+    var key = METRIC[metric] || 'barHr';
+    return rows
+      .filter(function (r) { return r.useVoid === !!useVoid; })
+      .sort(function (a, b) { return b[key] - a[key]; });
+  }
+
   function farmTime(rows, oreId, amount, unit, useVoid) {
     var ranked = rankFloors(rows, oreId, unit === 'bar' ? 'bar' : 'ore', useVoid);
     var best = ranked[0];
@@ -573,6 +580,7 @@
     floorValues: floorValues,
     buildRows: buildRows,
     rankFloors: rankFloors,
+    rankAll: rankAll,
     farmTime: farmTime,
     setBomb: setBomb,
     bombModel: bombModel,

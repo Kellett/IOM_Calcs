@@ -109,11 +109,21 @@
     node.className = 'status loaded';
   }
 
-  function fillOreSelect(select) {
+  var ANY_ORE = 'any';
+
+  function fillOreSelect(select, allowAny) {
     var keep = select.value;
     var first = null;
     var kept = false;
     select.innerHTML = '';
+    if (allowAny) {
+      var any = document.createElement('option');
+      any.value = ANY_ORE;
+      any.textContent = 'Any ore';
+      select.appendChild(any);
+      first = ANY_ORE;
+      if (keep === ANY_ORE) kept = true;
+    }
     DATA.ores.forEach(function (ore) {
       var unlocked = IOM.isOreUnlocked(ore.id, state);
       if (!unlocked && !state.showLockedOres) return;
@@ -129,8 +139,8 @@
   }
 
   function refreshOreSelects() {
-    fillOreSelect($('floor-ore'));
-    fillOreSelect($('farm-ore'));
+    fillOreSelect($('floor-ore'), true);
+    fillOreSelect($('farm-ore'), false);
     document.querySelectorAll('.ore-locked').forEach(function (box) {
       box.checked = !!state.showLockedOres;
     });
@@ -286,13 +296,17 @@
   // ------------------------------------------------------------- best floor
 
   function renderFloors() {
-    var oreId = Number($('floor-ore').value);
+    var selected = $('floor-ore').value;
+    var anyOre = selected === ANY_ORE;
+    var oreId = Number(selected);
     var metric = $('floor-metric').value;
     var useVoid = $('floor-void').checked;
     var host = $('floor-results');
     host.innerHTML = '';
 
-    var ranked = IOM.rankFloors(built.rows, oreId, metric, useVoid);
+    var ranked = anyOre
+      ? IOM.rankAll(built.rows, metric, useVoid)
+      : IOM.rankFloors(built.rows, oreId, metric, useVoid);
     if (!ranked.length) {
       host.textContent = 'No floor produces that ore with the current settings.';
       return;
@@ -302,7 +316,7 @@
     cards.className = 'cards';
     var best = ranked[0];
     [
-      { label: 'Best floor', value: String(best.floorId), sub: best.zone },
+      { label: 'Best floor', value: String(best.floorId), sub: best.zone + ' · ' + best.oreName },
       { label: 'Ore per hour', value: IOM.formatNumber(best.oreHr) },
       { label: 'Bars per hour', value: IOM.formatNumber(best.barHr) },
       { label: 'Gold per hour', value: IOM.formatNumber(best.goldHr) },
@@ -330,7 +344,7 @@
     var wrap = document.createElement('div');
     wrap.className = 'table-scroll';
     var table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th>Rank</th><th>Floor</th><th>Zone</th>' +
+    table.innerHTML = '<thead><tr><th>Rank</th><th>Floor</th><th>Zone</th><th>Ore</th>' +
       '<th class="num">Ore/hr</th><th class="num">Craft/hr</th><th class="num">Trans/hr</th>' +
       '<th class="num">Bars/hr</th><th class="num">Gold/hr</th></tr></thead>';
     var body = document.createElement('tbody');
@@ -339,6 +353,7 @@
       cell(tr, String(index + 1));
       cell(tr, String(row.floorId));
       cell(tr, row.zone);
+      cell(tr, row.oreName);
       cell(tr, IOM.formatNumber(row.oreHr), 'num');
       cell(tr, IOM.formatNumber(row.craftHr), 'num');
       cell(tr, IOM.formatNumber(row.transHr), 'num');
@@ -349,6 +364,14 @@
     table.appendChild(body);
     wrap.appendChild(table);
     host.appendChild(wrap);
+
+    if (anyOre && metric !== 'gold') {
+      var note = document.createElement('p');
+      note.className = 'hint';
+      note.style.marginTop = '14px';
+      note.textContent = 'Bars and ore are not worth the same from one ore to the next, so this only compares raw amounts. Switch to gold per hour for a like for like comparison.';
+      host.appendChild(note);
+    }
   }
 
   // -------------------------------------------------------------- farm time
