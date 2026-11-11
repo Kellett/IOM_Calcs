@@ -180,6 +180,12 @@
     dockWrap.appendChild(document.createTextNode('Fishing a tier 2 dock'));
     host.insertBefore(dockWrap, wrap);
 
+    var warning = document.createElement('p');
+    warning.className = 'notice';
+    warning.style.margin = '0 0 14px';
+    warning.textContent = 'This figure assumes every point of power goes to one dock. In game a tick advances every unlocked dock at once, and your power is split between them, so a real total needs per-dock power and each dock\'s tick requirement. Treat this as "one dock, all power".';
+    host.insertBefore(warning, cards);
+
     var note = document.createElement('p');
     note.className = 'hint';
     note.style.marginTop = '14px';
