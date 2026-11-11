@@ -219,6 +219,16 @@
     host.appendChild(note);
   }
 
+  function prefillObelisk() {
+    if (state.obeliskHp || state.obeliskArmour) return;
+    var next = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1) : null;
+    if (!next) return;
+    state.obeliskHp = String(next.hp);
+    state.obeliskArmour = String(next.armour);
+    $('obelisk-hp').value = state.obeliskHp;
+    $('obelisk-armour').value = state.obeliskArmour;
+  }
+
   function renderObelisk() {
     var host = $('obelisk-results');
     host.innerHTML = '';
@@ -885,6 +895,7 @@
       var parsed = IOM.parseExport($('export-text').value);
       var result = IOM.applyExport(state, parsed);
       syncBombToggles();
+      prefillObelisk();
       save();
       recalc();
       refreshAll();
@@ -976,15 +987,7 @@
 
   $('obelisk-hp').value = state.obeliskHp || '';
   $('obelisk-armour').value = state.obeliskArmour || '';
-  (function prefillObelisk() {
-    if (state.obeliskHp || state.obeliskArmour) return;
-    var next = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1) : null;
-    if (!next) return;
-    state.obeliskHp = String(next.hp);
-    state.obeliskArmour = String(next.armour);
-    $('obelisk-hp').value = state.obeliskHp;
-    $('obelisk-armour').value = state.obeliskArmour;
-  })();
+  prefillObelisk();
   ['obelisk-hp', 'obelisk-armour'].forEach(function (id) {
     $(id).addEventListener('input', function () {
       var value = $(id).value;
