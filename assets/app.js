@@ -27,6 +27,7 @@
       if (isFinite(Number(saved.w4SpeedMod))) base.w4SpeedMod = Number(saved.w4SpeedMod);
       if (saved.w3SpeedFix !== undefined) base.w3SpeedFix = !!saved.w3SpeedFix;
       if (isFinite(Number(saved.vein2x))) base.vein2x = Number(saved.vein2x);
+      if (saved.veinPortals) base.veinPortals = true;
       if (saved.cards) {
         if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
         if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
@@ -386,7 +387,10 @@
     note.className = 'hint';
     note.style.marginTop = '14px';
     note.textContent = vein.name + ' runs floors ' + vein.firstFloor + ' to ' + vein.lastFloor +
-      ' at rarity ' + vein.rarity + '. Rates assume no void portals, which matches an export with void portal chance at zero.';
+      ' at rarity ' + vein.rarity + '. ' + (state.veinPortals
+        ? 'Void portals are included, using your resolved portal chance of ' +
+          (IOM.resolve(state).totals.void_portal_chance * 100).toFixed(0) + '%. The source sheet ignores portals on its vein tab, so these will read higher than it does.'
+        : 'Void portals are left out, which is what the source sheet does on its vein tab. Tick Include void portals on Loadout to fold them in.');
     host.appendChild(note);
   }
 
@@ -691,6 +695,13 @@
       renderFloors();
     });
   });
+  $('vein-portals').checked = !!state.veinPortals;
+  $('vein-portals').addEventListener('change', function () {
+    state.veinPortals = $('vein-portals').checked;
+    save();
+    renderFloors();
+  });
+
   $('w3-speed').checked = !!state.w3SpeedFix;
   $('w3-speed').addEventListener('change', function () {
     state.w3SpeedFix = $('w3-speed').checked;

@@ -136,6 +136,7 @@
       exportFloor: num(params.exportFloor, 1),
       worldsUnlocked: null,
       vein2x: 0,
+      veinPortals: false,
       veinMorph: 0.143,
       veinGolden: 0.143,
       w3SpeedFix: true,
@@ -575,14 +576,57 @@
         + goldChance * rainbowChance * goldMulti * rainbowMulti))
       * ((1 - gleamChance) + gleamChance * gleamMulti);
 
+    // Void portals feed extra nodes in, weighted by the vein's own ore mix.
+    // The sheet normalises this by ores per screen, which cancels out, leaving
+    // just the share-weighted ore weights.
+    // The sheet's vein tab reads the raw export here, which is 0 for most
+    // saves, so portals are opt-in until there is something to check against.
+    var portalChance = state.veinPortals ? clamp01(num(totals.void_portal_chance, 0)) : 0;
+    var baseMulti = num(totals.void_portal_base_multi, 1) * num(totals.void_portal_multi, 1);
+    var goldPortal = clamp01(num(totals.golden_void_portal_chance, 0));
+    var goldPortalMulti = num(totals.golden_void_portal_multi, 1);
+    var rainbowPortal = clamp01(num(totals.rainbow_void_portal_chance, 0));
+    var rainbowPortalMulti = num(totals.rainbow_void_portal_multi, 1);
+    var galacticPortal = clamp01(num(totals.galactic_void_portal_chance, 0));
+    var galacticPortalMulti = num(totals.galactic_void_portal_multi, 1);
+
+    var tier = [baseMulti, baseMulti * goldPortalMulti,
+      baseMulti * goldPortalMulti * rainbowPortalMulti,
+      baseMulti * goldPortalMulti * rainbowPortalMulti * galacticPortalMulti];
+    var portalWeight = (1 - goldPortal) * tier[0]
+      + goldPortal * (1 - rainbowPortal) * tier[1]
+      + goldPortal * rainbowPortal * (1 - galacticPortal) * tier[2]
+      + goldPortal * rainbowPortal * galacticPortal * tier[3];
+
+    var span = vein.lastOre - vein.firstOre + 1;
+    var oreWeight = function (id) {
+      if (!id || id < vein.firstOre) return 0;
+      return (id >= vein.lastOre ? span : id - vein.firstOre + 1) / id;
+    };
+
     var rows = [];
-    for (var floor = vein.firstFloor; floor <= vein.lastFloor; floor++) {
+    for (var floor = 1; floor <= DATA.floors.length; floor++) {
+      var record = null;
+      for (var i = 0; i < DATA.floors.length; i++) {
+        if (DATA.floors[i].id === floor) { record = DATA.floors[i]; break; }
+      }
+      if (!record) continue;
+
+      var inZone = floor >= vein.firstFloor && floor <= vein.lastFloor ? 1 : 0;
+      var flat = (floor >= 103 && floor <= 106) || (floor >= 129 && floor <= 132) ? 0.4 : 1;
+      var mix = num(record.oreA.share, 0) * oreWeight(record.oreA.id)
+        + num(record.oreB.share, 0) * oreWeight(record.oreB.id);
+      var weight = (1 - portalChance * flat) * inZone
+        + portalChance * flat * mix * portalWeight;
+      if (!weight) continue;
+
       var rate = veinsPerScreen
         * num(params.floorsPerHour, 0)
         * num(totals.game_speed_multi, 1)
         * veinSpeed(floor, state)
         * income
-        * variant;
+        * variant
+        * weight;
       rows.push({ floorId: floor, rate: rate });
     }
 
@@ -590,6 +634,7 @@
       veinsPerScreen: veinsPerScreen,
       variant: variant,
       income: income,
+      portalWeight: portalWeight,
       rows: rows.sort(function (a, b) { return b.rate - a.rate; }),
     };
   }
