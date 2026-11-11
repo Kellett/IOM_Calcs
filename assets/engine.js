@@ -810,10 +810,46 @@
 
   // Obelisk damage. Crits roll in sequence: you only reach a super crit if the
   // crit roll passed, and so on, which is why the chances multiply.
+  // Wiki: base health and armour both scale x2.8 per level to 60, then health
+  // jumps to x30 and armour to x9.5 per level.
+  function obeliskBaseHealth(level) {
+    if (level < 1) return 0;
+    var value = level <= 60
+      ? 1e5 * Math.pow(2.8, level - 1)
+      : 1e5 * Math.pow(2.8, 60) * Math.pow(30, level - 60);
+    return Math.round(value);
+  }
+
+  function obeliskBaseArmour(level) {
+    if (level < 1) return 0;
+    var value = level <= 60
+      ? 10 * Math.pow(2.8, level - 1)
+      : 10 * Math.pow(2.8, 60) * Math.pow(9.5, level - 60);
+    return Math.round(value);
+  }
+
+  // Observed values from the game win over the formula, since armour is lowered
+  // by upgrades and artifacts that the export does not fully describe.
   function obeliskLookup(level) {
     var list = DATA.obelisks || [];
-    for (var i = 0; i < list.length; i++) if (list[i].level === level) return list[i];
-    return null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].level === level) {
+        var hit = list[i];
+        return {
+          level: level,
+          hp: num(hit.hp, obeliskBaseHealth(level)),
+          armour: num(hit.armour, obeliskBaseArmour(level)),
+          duration: num(hit.duration, 0),
+        };
+      }
+    }
+    if (level < 1) return null;
+    return {
+      level: level,
+      hp: obeliskBaseHealth(level),
+      armour: obeliskBaseArmour(level),
+      duration: 0,
+    };
   }
 
   function obeliskModel(state, hp, armor, duration) {
@@ -946,6 +982,8 @@
     fishingModel: fishingModel,
     obeliskModel: obeliskModel,
     obeliskLookup: obeliskLookup,
+    obeliskBaseHealth: obeliskBaseHealth,
+    obeliskBaseArmour: obeliskBaseArmour,
     MATHS_STATS: MATHS_STATS,
     DRIVEN_STATS: DRIVEN_STATS,
     veinByName: veinByName,
