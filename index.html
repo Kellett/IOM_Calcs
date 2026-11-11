@@ -94,11 +94,7 @@
 
   <section id="panel-bomb" class="panel">
     <h2>Which bomb</h2>
-    <p class="hint">Transmuter turns ore into bars as it lands. Of Plenty multiplies the ore you dig. Both are measured on the same floor with everything else held still.</p>
-    <div class="controls">
-      <label>Floor <select id="bomb-floor"></select></label>
-      <label class="check"><input type="checkbox" id="bomb-void" checked> Include void portals</label>
-    </div>
+    <p class="hint">Bomb of Plenty multiplies the ore you dig, so the extra ore gets crafted. The Transmuter drops bars directly and can also stamp a BoP stack on the rock. Which one wins comes down to how many ore a bar costs, so the crossover follows the ore tier rather than the floor number.</p>
     <div id="bomb-results"></div>
   </section>
 
@@ -109,11 +105,13 @@
       <dt>App version</dt><dd>0.1.0</dd>
       <dt>Export format</dt><dd>EXPORTSTATS v2.2.52</dd>
       <dt>Ports</dt><dd>IOM Calcs spreadsheet v1.1.1, built against game v2.2.5</dd>
+      <dt>Bomb model</dt><dd>Method from the Transmuter calculator at tabatkins.com/obelisk</dd>
       <dt>Workbook read on</dt><dd>2026-11-11</dd>
       <dt>Data</dt><dd>86 ores, 132 floors, 136 floor debuffs, 49 tracked stats</dd>
     </dl>
     <h3>Credits</h3>
     <p>The maths, the floor data and the whole structure of this came from the <strong>IOM Calcs</strong> spreadsheet by <strong>Taikuh</strong>. Without that sheet there is nothing here to port. If a number looks wrong, it is far more likely to be my transposition than their work.</p>
+    <p>The bomb crossover works the way <a href="https://tabatkins.com/obelisk/transmuter/">tabatkins' Transmuter calculator</a> does it, which models the Transmuter reapplying BoP, rather than the simpler add-up in the sheet. That tool is also the reason this page reports a break-even instead of a winner per floor.</p>
     <p>The sheet itself credits the IOM Wiki for images, numbers and mechanics, the Total Resources Calculator for the quick-fill approach, Best Farming Floor as the backbone of the floor work, and Let's Go Fishing for the interface style.</p>
     <p>Not affiliated with the game or its developers. No game files are read or modified; this only parses text you paste in.</p>
   </section>

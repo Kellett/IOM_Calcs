@@ -40,6 +40,22 @@ bar/hr    = craft/hr + trans/hr
 gold/hr   = bar/hr × bar value × bar card
 ```
 
+### Bombs
+
+Bomb of Plenty multiplies the ore you dig, which then gets crafted. The Transmuter
+drops bars directly and can also stamp a BoP stack. The winner comes down to ore per
+bar, so the answer is a break-even cost rather than a single floor:
+
+```
+cost  = (plentyBars - transmuteCraftBars) / transmuteDirectBars
+```
+
+Ores above that cost favour the Transmuter. The Bomb tab turns that into a floor
+range using the first floor each ore appears on. This follows
+[tabatkins' Transmuter calculator](https://tabatkins.com/obelisk/transmuter/),
+which models the Transmuter reapplying BoP. Doing it the sheet's way, where the
+two are simply added, always picks Of Plenty.
+
 `ore EM/hr` chains the multiplier stats with `EMBIN(chance, multi, nested)`,
 where `nested` lets a rarer floor type sit inside a more common one. Void portal
 ore is modelled separately from the base floor share, which is why a floor can

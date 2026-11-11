@@ -122,21 +122,6 @@
     select.value = keep || first || '';
   }
 
-  function fillFloorSelect(select) {
-    var keep = select.value;
-    var first = null;
-    select.innerHTML = '';
-    DATA.floors.forEach(function (f) {
-      var value = String(f.id);
-      if (first === null) first = value;
-      var opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = 'Floor ' + f.id + ' · ' + f.zone;
-      select.appendChild(opt);
-    });
-    select.value = keep || first || '';
-  }
-
   function cell(row, text, cls) {
     var td = document.createElement('td');
     td.textContent = text;
@@ -406,53 +391,88 @@
   // ------------------------------------------------------------------- bomb
 
   function renderBomb() {
-    var floorId = Number($('bomb-floor').value);
-    var useVoid = $('bomb-void').checked;
     var host = $('bomb-results');
     host.innerHTML = '';
 
-    var floor = IOM.floorsById.get(floorId);
-    if (!floor) return;
+    var model = IOM.bombModel(state);
+    var plentyRange = 'Every floor';
+    var transmuteRange = 'None';
+    if (model.allTransmuter) {
+      plentyRange = 'None';
+      transmuteRange = 'Every floor';
+    } else if (!model.allPlenty) {
+      plentyRange = '1 to ' + (model.flip.floor - 1);
+      transmuteRange = model.flip.floor + ' and up';
+    }
+
+    var cards = document.createElement('div');
+    cards.className = 'cards';
+    [
+      { label: 'Bomb of Plenty', value: plentyRange },
+      { label: 'Transmuter', value: transmuteRange },
+      { label: 'Break-even', value: IOM.formatNumber(model.breakEven), sub: 'ore per bar' },
+    ].forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = item.label;
+      var value = document.createElement('div');
+      value.className = 'value';
+      value.textContent = item.value;
+      card.appendChild(label);
+      card.appendChild(value);
+      if (item.sub) {
+        var sub = document.createElement('p');
+        sub.className = 'sub';
+        sub.textContent = item.sub;
+        card.appendChild(sub);
+      }
+      cards.appendChild(card);
+    });
+    host.appendChild(cards);
+
+    var note = document.createElement('p');
+    note.className = 'hint';
+    if (model.allTransmuter) {
+      note.textContent = 'Every ore costs more than ' + IOM.formatNumber(model.breakEven) +
+        ' ore per bar, so the Transmuter wins on all of them.';
+    } else if (model.allPlenty) {
+      note.textContent = 'No ore costs more than ' + IOM.formatNumber(model.breakEven) +
+        ' ore per bar, so Bomb of Plenty stays ahead on all of them.';
+    } else {
+      note.textContent = 'It flips at ' + model.flip.name + ', first seen on floor ' + model.flip.floor +
+        ', where a bar costs ' + model.flip.cost + ' ore. Cheaper bars go further when the ore is multiplied, dearer bars go further when the Transmuter drops them.';
+    }
+    host.appendChild(note);
+
+    // Show the ores either side of the flip so the reasoning is visible.
+    var index = model.ores.findIndex(function (ore) { return ore.fitsTransmuter; });
+    var from = index < 0 ? Math.max(0, model.ores.length - 9) : Math.max(0, index - 5);
+    var slice = model.ores.slice(from, from + 12);
 
     var wrap = document.createElement('div');
     wrap.className = 'table-scroll';
     var table = document.createElement('table');
-    table.innerHTML = '<thead><tr><th>Ore</th><th class="num">Bomb of Plenty</th>' +
-      '<th class="num">Transmuter</th><th>Better</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Ore</th><th class="num">Ore per bar</th>' +
+      '<th class="num">From floor</th><th>Better bomb</th></tr></thead>';
     var body = document.createElement('tbody');
-
-    [floor.oreA.id, floor.oreB.id].forEach(function (oreId) {
-      var ore = IOM.oresById.get(oreId);
-      if (!ore) return;
-      var result = IOM.bombCompare(state, floorId, oreId, useVoid);
+    slice.forEach(function (ore) {
       var tr = document.createElement('tr');
       cell(tr, ore.name);
-      if (!result) {
-        cell(tr, '-', 'num');
-        cell(tr, '-', 'num');
-        cell(tr, '-');
-      } else {
-        cell(tr, IOM.formatNumber(result.plenty.barsPerHour) + ' bars/hr', 'num');
-        cell(tr, IOM.formatNumber(result.transmuter.barsPerHour) + ' bars/hr', 'num');
-        var pick = document.createElement('td');
-        var span = document.createElement('span');
-        span.className = 'winner';
-        span.textContent = result.winner;
-        pick.appendChild(span);
-        tr.appendChild(pick);
-      }
+      cell(tr, String(ore.cost), 'num');
+      cell(tr, ore.floor === null ? '-' : String(ore.floor), 'num');
+      var pick = document.createElement('td');
+      var span = document.createElement('span');
+      if (ore.fitsTransmuter) span.className = 'winner';
+      span.textContent = ore.fitsTransmuter ? 'Transmuter' : 'Bomb of Plenty';
+      pick.appendChild(span);
+      tr.appendChild(pick);
       body.appendChild(tr);
     });
-
     table.appendChild(body);
     wrap.appendChild(table);
     host.appendChild(wrap);
-
-    var note = document.createElement('p');
-    note.className = 'hint';
-    note.style.marginTop = '14px';
-    note.textContent = 'Both bombs are treated as always active, so Of Plenty shows the bar rate you would get with its full ore multiplier and Transmuter shows crafting plus transmuted bars. Your current bomb is divided out first.';
-    host.appendChild(note);
   }
 
   // -------------------------------------------------------------------- init
@@ -517,9 +537,6 @@
     $(id).addEventListener('input', renderFarm);
     $(id).addEventListener('change', renderFarm);
   });
-  ['bomb-floor', 'bomb-void'].forEach(function (id) {
-    $(id).addEventListener('change', renderBomb);
-  });
 
   fillBombInUse();
   renderCards();
@@ -528,11 +545,6 @@
 
   fillOreSelect($('floor-ore'));
   fillOreSelect($('farm-ore'));
-  fillFloorSelect($('bomb-floor'));
-
-  var floorOne = DATA.floors[0];
-  if (floorOne) $('bomb-floor').value = String(floorOne.id);
-
   recalc();
   refreshAll();
 })();

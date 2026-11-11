@@ -79,6 +79,10 @@
     return NaN;
   }
 
+  function clamp01(v) {
+    return v < 0 ? 0 : v > 1 ? 1 : v;
+  }
+
   function statType(name) {
     var m = meta.get(name);
     return m ? m.type : 'number';
@@ -385,36 +389,90 @@
     return seen;
   }
 
-  // Both bombs at full uptime, measured against the same floor and ore. The
-  // current bomb is divided out first so the comparison does not double count.
-  function bombCompare(state, floorId, oreId, useVoid) {
-    var built = buildRows(state);
-    var totals = built.totals;
-    var row = null;
-    for (var i = 0; i < built.rows.length; i++) {
-      var r = built.rows[i];
-      if (r.floorId === floorId && r.oreId === oreId && r.useVoid === !!useVoid) { row = r; break; }
-    }
-    if (!row) return null;
+  // Bomb of Plenty multiplies the ore you dig, Transmuter drops bars directly
+  // and can also apply a BoP stack. Which wins comes down to how many ore a bar
+  // costs, so the answer is a cost threshold rather than a floor by itself.
+  function bombModel(state) {
+    var probe = JSON.parse(JSON.stringify(state));
+    DATA.input.forEach(function (row, index) {
+      if (row.section === 'Bomb') probe.toggles[index].use = 0;
+    });
 
-    var ore = oresById.get(oreId);
-    var barCard = ore ? barCardOf(ore, state) : 1;
-    var bopFactor = embin(totals.bomb_of_plenty_chance, totals.bomb_of_plenty_multi);
-    var bopMulti = Math.max(1, num(totals.bomb_of_plenty_multi, 1));
-    var transmute = num(totals.bomb_transmuter_multi, 1) * num(totals.bar_output_multi, 1);
+    var totals = resolve(probe).totals;
+    var toMult = function (chance, mult) {
+      return 1 + clamp01(num(chance, 0)) * (mult - 1);
+    };
 
-    var oreBare = row.oreHr / (bopFactor || 1);
-    var craftBare = row.craftHr / (bopFactor || 1);
+    var free = 1 / (1 - Math.min(clamp01(num(totals.free_craft_chance, 0)), 0.99));
+    var craftMult = free
+      * toMult(totals.double_craft_chance, 2)
+      * toMult(totals.triple_craft_chance, 3)
+      * toMult(totals.craft_5x_chance, 5)
+      * toMult(totals.craft_10x_chance, 10)
+      * toMult(totals.craft_20x_chance, 20)
+      * toMult(totals.craft_100x_chance, 100);
 
-    var plenty = { barsPerHour: craftBare * bopMulti };
-    var trans = { barsPerHour: craftBare + oreBare * transmute * barCard };
+    var plentyMulti = Math.max(1, num(totals.bomb_of_plenty_multi, 1));
+    var transmuteMulti = Math.max(1, num(totals.bomb_transmuter_multi, 1));
+    var transmutePlentyChance = clamp01(num(totals.bomb_trans_apply_bop_chance, 0));
+    var plentyGoldChance = clamp01(num(totals.bomb_of_plenty_make_gold_chance, 0));
+    var goldChance = clamp01(num(totals.golden_ore_chance, 0));
+    var goldMulti = Math.max(1, num(totals.golden_ore_multi, 1));
+
+    // A BoP stack can also roll the golden ore, but only if the rock was not
+    // already going to be golden, so the two chances are combined rather than added.
+    var combinedGold = goldChance + (1 - goldChance) * plentyGoldChance;
+    var plentyOre = plentyMulti * (combinedGold * goldMulti + (1 - combinedGold));
+    var plainOre = goldChance * goldMulti + (1 - goldChance);
+    var withChance = function (chance) {
+      return chance * plentyOre + (1 - chance) * plainOre;
+    };
+
+    var plentyBars = craftMult * withChance(1);
+    var transmuteOre = withChance(transmutePlentyChance);
+    var transmuteCraftBars = craftMult * transmuteOre;
+    var transmuteDirectBars = transmuteMulti * transmuteOre;
+    var breakEven = transmuteDirectBars > 0
+      ? (plentyBars - transmuteCraftBars) / transmuteDirectBars
+      : Infinity;
+
+    var costMulti = clamp01(num(totals.bar_craft_cost_multi, 1));
+    var firstFloor = {};
+    DATA.floors.forEach(function (f) {
+      [f.oreA.id, f.oreB.id].forEach(function (id) {
+        if (!firstFloor[id] || f.id < firstFloor[id]) firstFloor[id] = f.id;
+      });
+    });
+
+    var ores = DATA.ores.map(function (ore) {
+      var cost = costMulti
+        ? Math.round(num(ore.baseCost, 0) * costMulti)
+        : num(ore.craftCost, 0);
+      return {
+        id: ore.id,
+        name: ore.name,
+        cost: cost,
+        floor: firstFloor[ore.id] || null,
+        fitsTransmuter: cost > breakEven,
+      };
+    }).sort(function (a, b) { return a.cost - b.cost; });
+
+    var flip = null;
+    ores.forEach(function (ore) {
+      if (!ore.fitsTransmuter || !ore.floor) return;
+      if (flip === null || ore.floor < flip.floor) flip = ore;
+    });
 
     return {
-      row: row,
-      plenty: plenty,
-      transmuter: trans,
-      winner: trans.barsPerHour > plenty.barsPerHour ? 'Transmuter' : 'Bomb of Plenty',
-      ratio: plenty.barsPerHour ? trans.barsPerHour / plenty.barsPerHour : 0,
+      breakEven: breakEven,
+      craftMult: craftMult,
+      plentyMulti: plentyMulti,
+      transmuteMulti: transmuteMulti,
+      transmutePlentyChance: transmutePlentyChance,
+      ores: ores,
+      flip: flip,
+      allPlenty: ores.every(function (o) { return !o.fitsTransmuter; }),
+      allTransmuter: ores.every(function (o) { return o.fitsTransmuter; }),
     };
   }
 
@@ -490,7 +548,7 @@
     rankFloors: rankFloors,
     farmTime: farmTime,
     setBomb: setBomb,
-    bombCompare: bombCompare,
+    bombModel: bombModel,
     bombOptions: bombOptions,
     statType: statType,
     parseNumber: parseNumber,
