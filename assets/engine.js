@@ -139,6 +139,33 @@
     return world <= state.worldsUnlocked;
   }
 
+  // Stats that some calculator actually reads. Anything outside this set can be
+  // missing from an export without changing a single number.
+  var MATHS_STATS = new Set([
+    'ores_per_screen', 'multi_rock_chance', 'ore_income_multi', 'game_speed_multi',
+    'golden_ore_chance', 'golden_ore_multi', 'golden_floor_chance', 'golden_floor_multi',
+    'rainbow_floor_chance', 'rainbow_floor_multi', 'galactic_floor_chance', 'galactic_floor_multi',
+    'prismatic_floor_chance', 'prismatic_floor_multi',
+    'void_portal_chance', 'void_portal_base_multi', 'void_portal_multi',
+    'golden_void_portal_chance', 'golden_void_portal_multi',
+    'rainbow_void_portal_chance', 'rainbow_void_portal_multi',
+    'galactic_void_portal_chance', 'galactic_void_portal_multi',
+    'bomb_of_plenty_chance', 'bomb_of_plenty_multi', 'bomb_transmuter_chance', 'bomb_transmuter_multi',
+    'bar_output_multi', 'free_craft_chance', 'double_craft_chance', 'triple_craft_chance',
+    'craft_5x_chance', 'craft_10x_chance', 'craft_20x_chance', 'craft_100x_chance',
+    'vein_spawn_rate_multi', 'vein_income_multi', 'golden_vein_chance', 'golden_vein_multi',
+    'rainbow_vein_chance', 'rainbow_vein_multi', 'gleaming_vein_chance', 'gleaming_vein_multi',
+    'fishing_rod_power', 'fishing_drone_capacity', 'fishing_drone_power',
+    'fishing_drone_multiplier', 'fishing_tier2_dock_multi', 'fishing_income_multi',
+    'fishing_shiny_chance', 'fishing_shiny_multi',
+    'fishing_super_shiny_chance', 'fishing_super_shiny_multi',
+    'fishing_tick_speed', 'fishing_tick_reduction_seconds',
+    'bomb_trans_apply_bop_chance', 'bomb_of_plenty_make_gold_chance',
+  ]);
+
+  // Set by a control rather than typed in.
+  var DRIVEN_STATS = new Set(['bomb_of_plenty_chance', 'bomb_transmuter_chance']);
+
   function statType(name) {
     var m = meta.get(name);
     return m ? m.type : 'number';
@@ -785,6 +812,8 @@
     isOreUnlocked: isOreUnlocked,
     veinModel: veinModel,
     fishingModel: fishingModel,
+    MATHS_STATS: MATHS_STATS,
+    DRIVEN_STATS: DRIVEN_STATS,
     veinByName: veinByName,
     oreFirstFloor: oreFirstFloor,
     oreWorld: oreWorld,

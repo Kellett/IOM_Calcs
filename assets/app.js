@@ -280,20 +280,19 @@
     body.innerHTML = '';
 
     var manual = DATA.stats.filter(function (stat) { return !state.fromExport[stat.name]; });
-    // The bomb chances are driven by the bomb pick on Loadout, not typed in.
-    var driven = { bomb_of_plenty_chance: 1, bomb_transmuter_chance: 1 };
-    var empty = manual.filter(function (stat) {
-      return !driven[stat.name] && !IOM.resolve(state).totals[stat.name];
+    var needed = manual.filter(function (stat) {
+      return IOM.MATHS_STATS.has(stat.name) && !IOM.DRIVEN_STATS.has(stat.name);
     });
     var summary = $('stat-summary');
     if (!state.version) {
       summary.textContent = '';
-    } else if (!manual.length) {
-      summary.textContent = 'All ' + DATA.stats.length + ' tracked stats came from your export. Nothing to fill in.';
+    } else if (!needed.length) {
+      summary.textContent = 'Every rate is complete from your export. ' +
+        (manual.length ? manual.length + ' tracked stats were not in it, but none of them change a number.' : '');
     } else {
-      summary.textContent = manual.length + ' of ' + DATA.stats.length + ' stats were not in your export' +
-        (empty.length ? ', and ' + empty.length + ' of those are still zero: ' + empty.slice(0, 6).map(function (s2) { return s2.name; }).join(', ') + (empty.length > 6 ? ', ...' : '') : '') +
-        '. Type over any of them below.';
+      summary.textContent = needed.length + ' stat' + (needed.length === 1 ? '' : 's') +
+        ' that the calculators use did not come from your export: ' +
+        needed.map(function (s2) { return s2.name; }).join(', ') + '. Type over them below.';
     }
 
     DATA.stats.forEach(function (stat) {
@@ -783,13 +782,13 @@
       recalc();
       refreshAll();
       report.className = 'notice ok';
-      var missing = DATA.stats.filter(function (stat) { return !state.fromExport[stat.name]; });
+      var missing = DATA.stats.filter(function (stat) {
+        return !state.fromExport[stat.name] && IOM.MATHS_STATS.has(stat.name) && !IOM.DRIVEN_STATS.has(stat.name);
+      });
       report.textContent = 'Imported ' + result.known.length + ' stats from ' + (parsed.version || 'the export') + '.';
-      if (missing.length) {
-        report.textContent += ' ' + missing.length + ' tracked stats were not in the export and are marked manual on the Stats tab.';
-      } else {
-        report.textContent += ' Every tracked stat came through, nothing to fill in.';
-      }
+      report.textContent += missing.length
+        ? ' Still needed by the calculators: ' + missing.map(function (s2) { return s2.name; }).join(', ') + '.'
+        : ' Every rate is now complete, nothing to fill in.';
       if (result.unknown.length) {
         report.textContent += ' ' + result.unknown.length + ' keys are not used yet.';
       }
