@@ -29,6 +29,8 @@
       if (isFinite(Number(saved.vein2x))) base.vein2x = Number(saved.vein2x);
       if (saved.voidDrone !== undefined) base.voidDrone = !!saved.voidDrone;
       if (saved.tier2Dock !== undefined) base.tier2Dock = !!saved.tier2Dock;
+      if (saved.obeliskHp !== undefined) base.obeliskHp = saved.obeliskHp;
+      if (saved.obeliskArmour !== undefined) base.obeliskArmour = saved.obeliskArmour;
       if (saved.cards) {
         if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
         if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
@@ -214,6 +216,60 @@
     note.className = 'hint';
     note.style.marginTop = '14px';
     note.textContent = 'Tick interval is (60 seconds minus your flat reduction) divided by tick speed as a percentage. Value per tick and the shiny chain are checked against the source sheet exactly; the tick interpretation is ours, so if the game disagrees this is the one number to correct.';
+    host.appendChild(note);
+  }
+
+  function renderObelisk() {
+    var host = $('obelisk-results');
+    host.innerHTML = '';
+    var hp = IOM.parseNumber($('obelisk-hp').value);
+    var armour = IOM.parseNumber($('obelisk-armour').value);
+    var m = IOM.obeliskModel(state, isFinite(hp) ? hp : 0, isFinite(armour) ? armour : 0);
+
+    var cards = document.createElement('div');
+    cards.className = 'cards';
+    [
+      { label: 'Average damage per hit', value: IOM.formatNumber(m.perHit) },
+      { label: 'Damage per second', value: IOM.formatNumber(m.dps) },
+      { label: 'Attacks to break', value: m.attacks === null ? (m.blocked ? 'armour too high' : '-') : IOM.formatNumber(m.attacks) },
+      { label: 'Time to break', value: m.seconds === null ? '-' : IOM.formatDuration(m.seconds / 3600) },
+    ].forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = item.label;
+      var value = document.createElement('div');
+      value.className = 'value';
+      value.textContent = item.value;
+      card.appendChild(label);
+      card.appendChild(value);
+      cards.appendChild(card);
+    });
+    host.appendChild(cards);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    var table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Roll</th><th class="num">Chance</th>' +
+      '<th class="num">Multiplier</th><th class="num">Damage</th></tr></thead>';
+    var body = document.createElement('tbody');
+    m.tiers.forEach(function (tier) {
+      var tr = document.createElement('tr');
+      cell(tr, tier.name);
+      cell(tr, (tier.chance * 100).toFixed(2) + '%', 'num');
+      cell(tr, tier.mult > 1 ? IOM.formatNumber(tier.mult) + 'x' : '1x', 'num');
+      cell(tr, IOM.formatNumber(tier.hit), 'num');
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    wrap.appendChild(table);
+    host.appendChild(wrap);
+
+    var note = document.createElement('p');
+    note.className = 'hint';
+    note.style.marginTop = '14px';
+    note.textContent = 'Armour is treated as a flat reduction per hit, so a hit must beat it to count. Crit rolls are sequential: a super crit needs the crit roll first, which is why the chances multiply.';
     host.appendChild(note);
   }
 
@@ -805,6 +861,7 @@
     renderFarm();
     renderBomb();
     renderFishing();
+    renderObelisk();
   }
 
   function showTab(name) {
@@ -913,6 +970,17 @@
     save();
     renderFloors();
     renderFarm();
+  });
+
+  $('obelisk-hp').value = state.obeliskHp || '';
+  $('obelisk-armour').value = state.obeliskArmour || '';
+  ['obelisk-hp', 'obelisk-armour'].forEach(function (id) {
+    $(id).addEventListener('input', function () {
+      var value = $(id).value;
+      if (id === 'obelisk-hp') state.obeliskHp = value; else state.obeliskArmour = value;
+      save();
+      renderObelisk();
+    });
   });
 
   fillBombInUse();

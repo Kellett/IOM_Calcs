@@ -87,6 +87,25 @@
     meta.set(name, { name: name, group: 'Fishing', type: FISH_STATS[name] });
   });
 
+  var OBELISK_STATS = {
+    pickaxe_damage: 'number',
+    pickaxe_attack_speed_per_second: 'number',
+    pickaxe_crit_chance: 'chance',
+    pickaxe_crit_damage: 'multi',
+    pickaxe_super_crit_chance: 'chance',
+    pickaxe_super_crit_damage: 'multi',
+    pickaxe_ultra_crit_chance: 'chance',
+    pickaxe_ultra_crit_damage: 'multi',
+    pickaxe_omega_crit_chance: 'chance',
+    pickaxe_omega_crit_damage: 'multi',
+    obelisk_armor_reduction: 'number',
+  };
+
+  Object.keys(OBELISK_STATS).forEach(function (name) {
+    if (meta.has(name)) return;
+    meta.set(name, { name: name, group: 'Obelisk', type: OBELISK_STATS[name] });
+  });
+
   var NOTATION = DATA.notation.slice().sort(function (a, b) { return b.value - a.value; });
 
   function num(v, fallback) {
@@ -785,6 +804,58 @@
     };
   }
 
+  // Obelisk damage. Crits roll in sequence: you only reach a super crit if the
+  // crit roll passed, and so on, which is why the chances multiply.
+  function obeliskModel(state, hp, armor) {
+    var t = resolve(state).totals;
+    var damage = num(t.pickaxe_damage, 0);
+    var speed = num(t.pickaxe_attack_speed_per_second, 0);
+
+    var crit = Math.min(1, num(t.pickaxe_crit_chance, 0));
+    var sup = Math.min(1, num(t.pickaxe_super_crit_chance, 0));
+    var ultra = Math.min(1, num(t.pickaxe_ultra_crit_chance, 0));
+    var omega = Math.min(1, num(t.pickaxe_omega_crit_chance, 0));
+
+    var critMult = Math.max(1, num(t.pickaxe_crit_damage, 1));
+    var supMult = Math.max(1, num(t.pickaxe_super_crit_damage, 1));
+    var ultraMult = Math.max(1, num(t.pickaxe_ultra_crit_damage, 1));
+    var omegaMult = Math.max(1, num(t.pickaxe_omega_crit_damage, 1));
+
+    var tiers = [
+      { name: 'Regular', chance: 1 - crit, mult: 1 },
+      { name: 'Crit', chance: crit * (1 - sup), mult: critMult },
+      { name: 'Super crit', chance: crit * sup * (1 - ultra), mult: critMult * supMult },
+      { name: 'Ultra crit', chance: crit * sup * ultra * (1 - omega), mult: critMult * supMult * ultraMult },
+      { name: 'Omega crit', chance: crit * sup * ultra * omega, mult: critMult * supMult * ultraMult * omegaMult },
+    ];
+
+    var average = 0;
+    tiers.forEach(function (tier) { tier.hit = damage * tier.mult; average += tier.chance * tier.hit; });
+
+    var perHit = average;
+    var armour = Math.max(0, num(armor, 0));
+    var effective = perHit - armour;
+    var attacks = null;
+    var seconds = null;
+    if (hp > 0 && perHit > 0 && effective > 0) {
+      attacks = Math.ceil(hp / effective);
+      seconds = speed > 0 ? attacks / speed : null;
+    }
+
+    return {
+      damage: damage,
+      speed: speed,
+      tiers: tiers,
+      perHit: perHit,
+      dps: perHit * speed,
+      armour: armour,
+      effective: effective,
+      attacks: attacks,
+      seconds: seconds,
+      blocked: perHit > 0 && effective <= 0,
+    };
+  }
+
   function formatNumber(v) {
     if (!isFinite(v)) return '-';
     var a = Math.abs(v);
@@ -847,6 +918,7 @@
     isOreUnlocked: isOreUnlocked,
     veinModel: veinModel,
     fishingModel: fishingModel,
+    obeliskModel: obeliskModel,
     MATHS_STATS: MATHS_STATS,
     DRIVEN_STATS: DRIVEN_STATS,
     veinByName: veinByName,

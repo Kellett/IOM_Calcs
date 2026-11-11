@@ -24,6 +24,7 @@
   <button data-tab="farm">Farm time</button>
   <button data-tab="bomb">Bomb</button>
   <button data-tab="fishing">Fishing</button>
+  <button data-tab="obelisk">Obelisk</button>
   <button data-tab="about">About</button>
 </nav>
 
@@ -123,6 +124,16 @@
     <h2>Fishing</h2>
     <p class="hint">Worked out from your export: rod power, drone army, dock, shiny chains and tick rate. Nothing to fill in.</p>
     <div id="fishing-results"></div>
+  </section>
+
+  <section id="panel-obelisk" class="panel">
+    <h2>Obelisk damage</h2>
+    <p class="hint">Your pickaxe damage comes from the export, including the crit chain. Obelisk hit points and armour are the two things the game does not export, so enter them here.</p>
+    <div class="controls">
+      <label>Obelisk HP left <input id="obelisk-hp" type="text" inputmode="decimal" spellcheck="false"></label>
+      <label>Obelisk armour <input id="obelisk-armour" type="text" inputmode="decimal" spellcheck="false"></label>
+    </div>
+    <div id="obelisk-results"></div>
   </section>
 
   <section id="panel-about" class="panel">
