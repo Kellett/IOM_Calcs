@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IOM Calcs</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>IOM Calcs</h1>
+    <p class="sub">Ore, bar and gold rates worked out from your own game export. Nothing leaves this page.</p>
+    <div id="status" class="status">No export loaded</div>
+  </div>
+</header>
+
+<nav class="wrap" id="tabs">
+  <button data-tab="import" class="active">Import</button>
+  <button data-tab="stats">Stats</button>
+  <button data-tab="loadout">Loadout</button>
+  <button data-tab="floors">Best floor</button>
+  <button data-tab="farm">Farm time</button>
+  <button data-tab="bomb">Bomb</button>
+  <button data-tab="about">About</button>
+</nav>
+
+<main class="wrap">
+
+  <section id="panel-import" class="panel active">
+    <h2>Paste your export</h2>
+    <p class="hint">Copy EXPORTSTATS from the game and drop the whole thing in here. It is stored in this browser only, so it survives a refresh.</p>
+    <textarea id="export-text" spellcheck="false" placeholder='{"version":"v2.2.52","stats":{"all_floor_multipliers":9.85,...},"time":46337.42}'></textarea>
+    <div class="row">
+      <button id="do-import" class="primary">Import</button>
+      <button id="do-reset">Clear saved data</button>
+    </div>
+    <div id="import-report"></div>
+  </section>
+
+  <section id="panel-stats" class="panel">
+    <h2>Stats</h2>
+    <p class="hint">These come from your export. Anything the game does not export is marked manual and can be typed over. Bars, drones and cards live on the Loadout tab.</p>
+    <div class="table-scroll">
+      <table id="stat-table">
+        <thead>
+          <tr><th>Stat</th><th>Type</th><th>Imported</th><th>Total</th><th>Formatted</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:14px">Total is what the maths actually uses, after adjustments and any replace values. Imported is the raw export value.</p>
+  </section>
+
+  <section id="panel-loadout" class="panel">
+    <h2>Loadout</h2>
+    <p class="hint">Everything the sheet used to make you fill in by hand. At export is how the game had it when you copied the export, In calc is what you want the numbers to assume. Changing In calc is how you test a swap without doing it in game.</p>
+    <div class="controls">
+      <label>Bomb in use <select id="bomb-in-use"></select></label>
+      <label>Ore card <input id="card-ore" type="text" inputmode="decimal"></label>
+      <label>Bar card <input id="card-bar" type="text" inputmode="decimal"></label>
+    </div>
+    <p class="hint">The export does not record which bomb you throw, so pick it above. Ores without a card of their own ignore the card values and stay at 1x; the bar card also scales the gold value of a bar.</p>
+    <div id="mod-sources"></div>
+  </section>
+
+  <section id="panel-floors" class="panel">
+    <h2>Best floor to farm</h2>
+    <div class="controls">
+      <label>Ore <select id="floor-ore"></select></label>
+      <label>Rank by
+        <select id="floor-metric">
+          <option value="bar">Bars per hour</option>
+          <option value="ore">Ore per hour</option>
+          <option value="gold">Gold per hour</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="floor-void" checked> Include void portals</label>
+    </div>
+    <div id="floor-results"></div>
+  </section>
+
+  <section id="panel-farm" class="panel">
+    <h2>Time to farm</h2>
+    <div class="controls">
+      <label>Ore <select id="farm-ore"></select></label>
+      <label>Amount <input id="farm-amount" type="text" value="1e9" spellcheck="false"></label>
+      <label>Of <select id="farm-unit"><option value="ore">Ore</option><option value="bar">Bars</option></select></label>
+      <label class="check"><input type="checkbox" id="farm-void" checked> Include void portals</label>
+    </div>
+    <div id="farm-results"></div>
+  </section>
+
+  <section id="panel-bomb" class="panel">
+    <h2>Which bomb</h2>
+    <p class="hint">Transmuter turns ore into bars as it lands. Of Plenty multiplies the ore you dig. Both are measured on the same floor with everything else held still.</p>
+    <div class="controls">
+      <label>Floor <select id="bomb-floor"></select></label>
+      <label class="check"><input type="checkbox" id="bomb-void" checked> Include void portals</label>
+    </div>
+    <div id="bomb-results"></div>
+  </section>
+
+  <section id="panel-about" class="panel">
+    <h2>About</h2>
+    <p class="hint">A browser calculator for Idle Obelisk Miner. Everything runs in the page and your export is only ever written to this browser's local storage.</p>
+    <dl class="facts">
+      <dt>App version</dt><dd>0.1.0</dd>
+      <dt>Export format</dt><dd>EXPORTSTATS v2.2.52</dd>
+      <dt>Ports</dt><dd>IOM Calcs spreadsheet v1.1.1, built against game v2.2.5</dd>
+      <dt>Workbook read on</dt><dd>2026-11-11</dd>
+      <dt>Data</dt><dd>86 ores, 132 floors, 136 floor debuffs, 49 tracked stats</dd>
+    </dl>
+    <h3>Credits</h3>
+    <p>The maths, the floor data and the whole structure of this came from the <strong>IOM Calcs</strong> spreadsheet by <strong>Taikuh</strong>. Without that sheet there is nothing here to port. If a number looks wrong, it is far more likely to be my transposition than their work.</p>
+    <p>The sheet itself credits the IOM Wiki for images, numbers and mechanics, the Total Resources Calculator for the quick-fill approach, Best Farming Floor as the backbone of the floor work, and Let's Go Fishing for the interface style.</p>
+    <p>Not affiliated with the game or its developers. No game files are read or modified; this only parses text you paste in.</p>
+  </section>
+
+</main>
+
+<footer class="wrap">
+  <p>Rates calculated from the EXPORTSTATS layout of v2.2.52, using the same model as the community sheet. See the About tab for credits and versions.</p>
+</footer>
+
+<script src="assets/data.js"></script>
+<script src="assets/engine.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

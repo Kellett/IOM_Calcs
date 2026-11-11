@@ -1,0 +1,538 @@
+(function () {
+  'use strict';
+
+  var IOM = window.IOM;
+  var DATA = IOM.data;
+  var STORAGE_KEY = 'iom-calc-state-v1';
+
+  var state = load();
+  var built = null;
+
+  function $(id) { return document.getElementById(id); }
+
+  function load() {
+    var base = IOM.emptyState();
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return base;
+      var saved = JSON.parse(raw);
+      if (saved.imported) Object.keys(saved.imported).forEach(function (k) { base.imported[k] = saved.imported[k]; });
+      if (saved.fromExport) base.fromExport = saved.fromExport;
+      if (saved.bases) base.bases = saved.bases;
+      if (saved.bomb) base.bomb = saved.bomb;
+      if (saved.cards) {
+        if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
+        if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
+      }
+      if (Array.isArray(saved.toggles) && saved.toggles.length === base.toggles.length) base.toggles = saved.toggles;
+      base.version = saved.version || null;
+      base.time = saved.time || null;
+      return base;
+    } catch (err) {
+      return base;
+    }
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (err) { /* private mode */ }
+  }
+
+  function recalc() {
+    built = IOM.buildRows(state);
+  }
+
+  function renderCards() {
+    $('card-ore').value = String(state.cards.ore);
+    $('card-bar').value = String(state.cards.bar);
+  }
+
+  function bindCard(id, key) {
+    $(id).addEventListener('change', function () {
+      var parsed = IOM.parseNumber($(id).value);
+      if (!isFinite(parsed) || parsed <= 0) { renderCards(); return; }
+      state.cards[key] = parsed;
+      save();
+      recalc();
+      renderFloors();
+      renderFarm();
+      renderBomb();
+    });
+  }
+
+  function syncBombToggles() {
+    DATA.input.forEach(function (row, index) {
+      if (row.section !== 'Bomb') return;
+      state.toggles[index].export = 0;
+      state.toggles[index].use = state.bomb !== 'none' && row.source === state.bomb ? 1 : 0;
+    });
+  }
+
+  function applyBomb(name) {
+    state.bomb = name;
+    syncBombToggles();
+    save();
+    recalc();
+    renderMods();
+    renderStats();
+    renderFloors();
+    renderFarm();
+    renderBomb();
+  }
+
+  function fillBombInUse() {
+    var select = $('bomb-in-use');
+    select.innerHTML = '';
+    var none = document.createElement('option');
+    none.value = 'none';
+    none.textContent = 'None';
+    select.appendChild(none);
+    IOM.bombOptions().forEach(function (name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      select.appendChild(opt);
+    });
+    select.value = state.bomb;
+    select.addEventListener('change', function () { applyBomb(select.value); });
+  }
+
+  function renderStatus() {
+    var node = $('status');
+    if (!state.version) {
+      node.textContent = 'No export loaded. Rates are using the defaults from the source sheet.';
+      node.className = 'status';
+      return;
+    }
+    node.textContent = 'Export ' + state.version + ' loaded';
+    node.className = 'status loaded';
+  }
+
+  function fillOreSelect(select) {
+    var keep = select.value;
+    var first = null;
+    select.innerHTML = '';
+    DATA.ores.forEach(function (ore) {
+      var value = String(ore.id);
+      if (first === null) first = value;
+      var opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = ore.name;
+      select.appendChild(opt);
+    });
+    select.value = keep || first || '';
+  }
+
+  function fillFloorSelect(select) {
+    var keep = select.value;
+    var first = null;
+    select.innerHTML = '';
+    DATA.floors.forEach(function (f) {
+      var value = String(f.id);
+      if (first === null) first = value;
+      var opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = 'Floor ' + f.id + ' · ' + f.zone;
+      select.appendChild(opt);
+    });
+    select.value = keep || first || '';
+  }
+
+  function cell(row, text, cls) {
+    var td = document.createElement('td');
+    td.textContent = text;
+    if (cls) td.className = cls;
+    row.appendChild(td);
+    return td;
+  }
+
+  // ---------------------------------------------------------------- stats
+
+  function renderStats() {
+    var body = document.querySelector('#stat-table tbody');
+    body.innerHTML = '';
+
+    DATA.stats.forEach(function (stat) {
+      var tr = document.createElement('tr');
+      var nameCell = cell(tr, stat.name);
+      if (!state.fromExport[stat.name]) {
+        var badge = document.createElement('span');
+        badge.className = 'manual';
+        badge.textContent = 'manual';
+        nameCell.appendChild(badge);
+      }
+      cell(tr, IOM.statType(stat.name));
+
+      var inputCell = document.createElement('td');
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.inputMode = 'decimal';
+      input.value = String(state.imported[stat.name]);
+      input.addEventListener('change', function () {
+        var parsed = IOM.parseNumber(input.value);
+        if (!isFinite(parsed)) { input.value = String(state.imported[stat.name]); return; }
+        state.imported[stat.name] = parsed;
+        delete state.fromExport[stat.name];
+        save();
+        recalc();
+        renderStats();
+        renderFloors();
+        renderFarm();
+        renderBomb();
+      });
+      inputCell.appendChild(input);
+      tr.appendChild(inputCell);
+
+      cell(tr, '-', 'num total-cell');
+      cell(tr, '-', 'num formatted-cell');
+      body.appendChild(tr);
+    });
+
+    updateStatTotals();
+  }
+
+  function updateStatTotals() {
+    var rows = document.querySelectorAll('#stat-table tbody tr');
+    DATA.stats.forEach(function (stat, index) {
+      var tr = rows[index];
+      if (!tr) return;
+      var value = built.totals[stat.name];
+      tr.querySelector('.total-cell').textContent = IOM.formatNumber(value);
+      tr.querySelector('.formatted-cell').textContent = IOM.formatValue(value, stat.type);
+    });
+  }
+
+  function renderMods() {
+    var host = $('mod-sources');
+    host.innerHTML = '';
+
+    var sections = {};
+    DATA.input.forEach(function (row, index) {
+      if (row.method === 'replace') return;
+      row.__index = index;
+      (sections[row.section] = sections[row.section] || []).push(row);
+    });
+
+    Object.keys(sections).forEach(function (name) {
+      var details = document.createElement('details');
+      var summary = document.createElement('summary');
+      summary.textContent = name + ' (' + sections[name].length + ')';
+      details.appendChild(summary);
+
+      var grid = document.createElement('div');
+      grid.className = 'mod-grid';
+
+      ['Source', 'Base', 'At export', 'In calc'].forEach(function (label) {
+        var span = document.createElement('span');
+        span.className = 'head';
+        span.textContent = label;
+        grid.appendChild(span);
+      });
+
+      sections[name].forEach(function (row) {
+        var index = row.__index;
+        var toggle = state.toggles[index];
+        if (!toggle) return;
+
+        var src = document.createElement('span');
+        src.className = 'src';
+        src.textContent = row.source + ' → ' + row.stat;
+        grid.appendChild(src);
+
+        var baseCell = document.createElement('span');
+        if (row.base.kind === 'literal') {
+          var input = document.createElement('input');
+          input.type = 'text';
+          input.inputMode = 'decimal';
+          input.value = String(Object.prototype.hasOwnProperty.call(state.bases, index) ? state.bases[index] : row.base.value);
+          input.style.width = '90px';
+          input.addEventListener('change', function () {
+            var parsed = IOM.parseNumber(input.value);
+            if (!isFinite(parsed)) { input.value = String(baseOf(row, index)); return; }
+            state.bases[index] = parsed;
+            save(); recalc(); renderStats(); renderFloors(); renderFarm(); renderBomb();
+          });
+          baseCell.appendChild(input);
+        } else {
+          baseCell.textContent = IOM.formatNumber(baseOf(row, index));
+          baseCell.style.color = 'var(--muted)';
+        }
+        grid.appendChild(baseCell);
+
+        [['export', 'At export'], ['use', 'In calc']].forEach(function (pair) {
+          var holder = document.createElement('span');
+          var box = document.createElement('input');
+          box.type = 'checkbox';
+          box.checked = !!toggle[pair[0]];
+          box.addEventListener('change', function () {
+            toggle[pair[0]] = box.checked ? 1 : 0;
+            save(); recalc(); renderStats(); renderFloors(); renderFarm(); renderBomb();
+          });
+          holder.appendChild(box);
+          grid.appendChild(holder);
+        });
+      });
+
+      details.appendChild(grid);
+      host.appendChild(details);
+    });
+  }
+
+  function baseOf(row, index) {
+    if (Object.prototype.hasOwnProperty.call(state.bases, index)) return state.bases[index];
+    if (row.base.kind === 'literal') return row.base.value;
+    if (row.base.kind === 'stat') return state.imported[row.base.key] || 0;
+    return 0;
+  }
+
+  // ------------------------------------------------------------- best floor
+
+  function renderFloors() {
+    var oreId = Number($('floor-ore').value);
+    var metric = $('floor-metric').value;
+    var useVoid = $('floor-void').checked;
+    var host = $('floor-results');
+    host.innerHTML = '';
+
+    var ranked = IOM.rankFloors(built.rows, oreId, metric, useVoid);
+    if (!ranked.length) {
+      host.textContent = 'No floor produces that ore with the current settings.';
+      return;
+    }
+
+    var cards = document.createElement('div');
+    cards.className = 'cards';
+    var best = ranked[0];
+    [
+      { label: 'Best floor', value: String(best.floorId), sub: best.zone },
+      { label: 'Ore per hour', value: IOM.formatNumber(best.oreHr) },
+      { label: 'Bars per hour', value: IOM.formatNumber(best.barHr) },
+      { label: 'Gold per hour', value: IOM.formatNumber(best.goldHr) },
+    ].forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = item.label;
+      var value = document.createElement('div');
+      value.className = 'value';
+      value.textContent = item.value;
+      card.appendChild(label);
+      card.appendChild(value);
+      if (item.sub) {
+        var sub = document.createElement('p');
+        sub.className = 'sub';
+        sub.textContent = item.sub;
+        card.appendChild(sub);
+      }
+      cards.appendChild(card);
+    });
+    host.appendChild(cards);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    var table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Rank</th><th>Floor</th><th>Zone</th>' +
+      '<th class="num">Ore/hr</th><th class="num">Craft/hr</th><th class="num">Trans/hr</th>' +
+      '<th class="num">Bars/hr</th><th class="num">Gold/hr</th></tr></thead>';
+    var body = document.createElement('tbody');
+    ranked.slice(0, 10).forEach(function (row, index) {
+      var tr = document.createElement('tr');
+      cell(tr, String(index + 1));
+      cell(tr, String(row.floorId));
+      cell(tr, row.zone);
+      cell(tr, IOM.formatNumber(row.oreHr), 'num');
+      cell(tr, IOM.formatNumber(row.craftHr), 'num');
+      cell(tr, IOM.formatNumber(row.transHr), 'num');
+      cell(tr, IOM.formatNumber(row.barHr), 'num');
+      cell(tr, IOM.formatNumber(row.goldHr), 'num');
+      body.appendChild(tr);
+    });
+    table.appendChild(body);
+    wrap.appendChild(table);
+    host.appendChild(wrap);
+  }
+
+  // -------------------------------------------------------------- farm time
+
+  function renderFarm() {
+    var oreId = Number($('farm-ore').value);
+    var amount = IOM.parseNumber($('farm-amount').value);
+    var unit = $('farm-unit').value;
+    var useVoid = $('farm-void').checked;
+    var host = $('farm-results');
+    host.innerHTML = '';
+
+    if (!isFinite(amount) || amount <= 0) {
+      host.textContent = 'That is not an amount. Try 75000000, 75m or 7.5e7.';
+      return;
+    }
+
+    var result = IOM.farmTime(built.rows, oreId, amount, unit, useVoid);
+    if (!result) {
+      host.textContent = 'No floor produces that ore with the current settings.';
+      return;
+    }
+
+    var perHour = unit === 'bar' ? 'bars' : 'ore';
+    var cards = document.createElement('div');
+    cards.className = 'cards';
+    [
+      { label: 'Time needed', value: IOM.formatDuration(result.hours) },
+      { label: 'Rate on the best floor', value: IOM.formatNumber(result.rate) + ' ' + perHour + '/hr' },
+      { label: 'Farm on floor', value: String(result.row.floorId), sub: result.row.zone },
+      { label: 'Amount per hour', value: IOM.formatNumber(result.rate * 24), sub: 'if you leave it running a day' },
+    ].forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = item.label;
+      var value = document.createElement('div');
+      value.className = 'value';
+      value.textContent = item.value;
+      card.appendChild(label);
+      card.appendChild(value);
+      if (item.sub) {
+        var sub = document.createElement('p');
+        sub.className = 'sub';
+        sub.textContent = item.sub;
+        card.appendChild(sub);
+      }
+      cards.appendChild(card);
+    });
+    host.appendChild(cards);
+  }
+
+  // ------------------------------------------------------------------- bomb
+
+  function renderBomb() {
+    var floorId = Number($('bomb-floor').value);
+    var useVoid = $('bomb-void').checked;
+    var host = $('bomb-results');
+    host.innerHTML = '';
+
+    var floor = IOM.floorsById.get(floorId);
+    if (!floor) return;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    var table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Ore</th><th class="num">Bomb of Plenty</th>' +
+      '<th class="num">Transmuter</th><th>Better</th></tr></thead>';
+    var body = document.createElement('tbody');
+
+    [floor.oreA.id, floor.oreB.id].forEach(function (oreId) {
+      var ore = IOM.oresById.get(oreId);
+      if (!ore) return;
+      var result = IOM.bombCompare(state, floorId, oreId, useVoid);
+      var tr = document.createElement('tr');
+      cell(tr, ore.name);
+      if (!result) {
+        cell(tr, '-', 'num');
+        cell(tr, '-', 'num');
+        cell(tr, '-');
+      } else {
+        cell(tr, IOM.formatNumber(result.plenty.barsPerHour) + ' bars/hr', 'num');
+        cell(tr, IOM.formatNumber(result.transmuter.barsPerHour) + ' bars/hr', 'num');
+        var pick = document.createElement('td');
+        var span = document.createElement('span');
+        span.className = 'winner';
+        span.textContent = result.winner;
+        pick.appendChild(span);
+        tr.appendChild(pick);
+      }
+      body.appendChild(tr);
+    });
+
+    table.appendChild(body);
+    wrap.appendChild(table);
+    host.appendChild(wrap);
+
+    var note = document.createElement('p');
+    note.className = 'hint';
+    note.style.marginTop = '14px';
+    note.textContent = 'Both bombs are treated as always active, so Of Plenty shows the bar rate you would get with its full ore multiplier and Transmuter shows crafting plus transmuted bars. Your current bomb is divided out first.';
+    host.appendChild(note);
+  }
+
+  // -------------------------------------------------------------------- init
+
+  function refreshAll() {
+    renderStatus();
+    renderCards();
+    $('bomb-in-use').value = state.bomb;
+    renderMods();
+    renderStats();
+    renderFloors();
+    renderFarm();
+    renderBomb();
+  }
+
+  function showTab(name) {
+    document.querySelectorAll('#tabs button').forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.tab === name);
+    });
+    document.querySelectorAll('.panel').forEach(function (panel) {
+      panel.classList.toggle('active', panel.id === 'panel-' + name);
+    });
+  }
+
+  document.querySelectorAll('#tabs button').forEach(function (btn) {
+    btn.addEventListener('click', function () { showTab(btn.dataset.tab); });
+  });
+
+  $('do-import').addEventListener('click', function () {
+    var report = $('import-report');
+    try {
+      var parsed = IOM.parseExport($('export-text').value);
+      var result = IOM.applyExport(state, parsed);
+      syncBombToggles();
+      save();
+      recalc();
+      refreshAll();
+      report.className = 'notice ok';
+      report.textContent = 'Imported ' + result.known.length + ' stats from ' + (parsed.version || 'the export') + '.';
+      if (result.unknown.length) {
+        report.textContent += ' ' + result.unknown.length + ' keys are not used by this calculator yet.';
+      }
+    } catch (err) {
+      report.className = 'notice';
+      report.textContent = err.message;
+    }
+  });
+
+  $('do-reset').addEventListener('click', function () {
+    if (!window.confirm('Clear the imported export and every adjustment?')) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (err) { /* ignore */ }
+    state = IOM.emptyState();
+    $('export-text').value = '';
+    recalc();
+    refreshAll();
+  });
+
+  ['floor-ore', 'floor-metric', 'floor-void'].forEach(function (id) {
+    $(id).addEventListener('change', renderFloors);
+  });
+  ['farm-ore', 'farm-amount', 'farm-unit', 'farm-void'].forEach(function (id) {
+    $(id).addEventListener('input', renderFarm);
+    $(id).addEventListener('change', renderFarm);
+  });
+  ['bomb-floor', 'bomb-void'].forEach(function (id) {
+    $(id).addEventListener('change', renderBomb);
+  });
+
+  fillBombInUse();
+  renderCards();
+  bindCard('card-ore', 'ore');
+  bindCard('card-bar', 'bar');
+
+  fillOreSelect($('floor-ore'));
+  fillOreSelect($('farm-ore'));
+  fillFloorSelect($('bomb-floor'));
+
+  var floorOne = DATA.floors[0];
+  if (floorOne) $('bomb-floor').value = String(floorOne.id);
+
+  recalc();
+  refreshAll();
+})();
