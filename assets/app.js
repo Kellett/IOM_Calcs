@@ -269,7 +269,7 @@
     var note = document.createElement('p');
     note.className = 'hint';
     note.style.marginTop = '14px';
-    note.textContent = 'Armour is treated as a flat reduction per hit, so a hit must beat it to count. Crit rolls are sequential: a super crit needs the crit roll first, which is why the chances multiply.';
+    note.textContent = 'Armour comes off the base hit before crits, so if base damage cannot beat it the obelisk cannot be hurt at all, however high the crit multiplier. Crit rolls are sequential: a super crit needs the crit roll first, which is why the chances multiply.';
     host.appendChild(note);
   }
 

@@ -829,16 +829,23 @@
       { name: 'Omega crit', chance: crit * sup * ultra * omega, mult: critMult * supMult * ultraMult * omegaMult },
     ];
 
+    // Armour comes off the base hit before crits, per the wiki. If the base
+    // cannot beat the armour, no crit can save it.
+    var armour = Math.max(0, num(armor, 0));
+    var base = damage - armour;
+    var blocked = damage > 0 && base <= 0;
+
     var average = 0;
-    tiers.forEach(function (tier) { tier.hit = damage * tier.mult; average += tier.chance * tier.hit; });
+    tiers.forEach(function (tier) {
+      tier.hit = Math.max(0, base) * tier.mult;
+      average += tier.chance * tier.hit;
+    });
 
     var perHit = average;
-    var armour = Math.max(0, num(armor, 0));
-    var effective = perHit - armour;
     var attacks = null;
     var seconds = null;
-    if (hp > 0 && perHit > 0 && effective > 0) {
-      attacks = Math.ceil(hp / effective);
+    if (hp > 0 && perHit > 0) {
+      attacks = Math.ceil(hp / perHit);
       seconds = speed > 0 ? attacks / speed : null;
     }
 
@@ -849,10 +856,10 @@
       perHit: perHit,
       dps: perHit * speed,
       armour: armour,
-      effective: effective,
+      base: base,
       attacks: attacks,
       seconds: seconds,
-      blocked: perHit > 0 && effective <= 0,
+      blocked: blocked,
     };
   }
 
