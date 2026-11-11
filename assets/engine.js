@@ -99,6 +99,7 @@
     pickaxe_omega_crit_chance: 'chance',
     pickaxe_omega_crit_damage: 'multi',
     obelisk_armor_reduction: 'number',
+    obelisk_timer_add: 'number',
   };
 
   Object.keys(OBELISK_STATS).forEach(function (name) {

@@ -234,8 +234,10 @@
     host.innerHTML = '';
     var hp = IOM.parseNumber($('obelisk-hp').value);
     var armour = IOM.parseNumber($('obelisk-armour').value);
-    var known = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1, state.armourFactor) : null;
-    var duration = known ? known.duration : 0;
+    // Fight duration is a 60 second base plus obelisk_timer_add from the export,
+    // which lands exactly on the 1:13 the game shows.
+    var timerAdd = IOM.resolve(state).totals.obelisk_timer_add;
+    var duration = 60 + (isFinite(timerAdd) ? timerAdd : 0);
     var m = IOM.obeliskModel(state, isFinite(hp) ? hp : 0, isFinite(armour) ? armour : 0, duration);
 
     var cards = document.createElement('div');
