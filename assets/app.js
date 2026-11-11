@@ -27,7 +27,7 @@
       if (isFinite(Number(saved.w4SpeedMod))) base.w4SpeedMod = Number(saved.w4SpeedMod);
       if (saved.w3SpeedFix !== undefined) base.w3SpeedFix = !!saved.w3SpeedFix;
       if (isFinite(Number(saved.vein2x))) base.vein2x = Number(saved.vein2x);
-      if (saved.veinPortals) base.veinPortals = true;
+      if (saved.veinPortals !== undefined) base.veinPortals = !!saved.veinPortals;
       if (saved.cards) {
         if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
         if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
@@ -388,9 +388,10 @@
     note.style.marginTop = '14px';
     note.textContent = vein.name + ' runs floors ' + vein.firstFloor + ' to ' + vein.lastFloor +
       ' at rarity ' + vein.rarity + '. ' + (state.veinPortals
-        ? 'Void portals are included, using your resolved portal chance of ' +
-          (IOM.resolve(state).totals.void_portal_chance * 100).toFixed(0) + '%. The source sheet ignores portals on its vein tab, so these will read higher than it does.'
-        : 'Void portals are left out, which is what the source sheet does on its vein tab. Tick Include void portals on Loadout to fold them in.');
+        ? 'Void portals are included at your resolved ' +
+          (IOM.resolve(state).totals.void_portal_chance * 100).toFixed(0) +
+          '%, because a portaled ore can turn into a vein of its own zone. The sheet leaves them out, so these read higher than it does.'
+        : 'Void portals are left out to match the source sheet. Untick Include void portals on Loadout to put them back in.');
     host.appendChild(note);
   }
 

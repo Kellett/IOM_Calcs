@@ -136,7 +136,7 @@
       exportFloor: num(params.exportFloor, 1),
       worldsUnlocked: null,
       vein2x: 0,
-      veinPortals: false,
+      veinPortals: true,
       veinMorph: 0.143,
       veinGolden: 0.143,
       w3SpeedFix: true,
@@ -579,8 +579,9 @@
     // Void portals feed extra nodes in, weighted by the vein's own ore mix.
     // The sheet normalises this by ores per screen, which cancels out, leaving
     // just the share-weighted ore weights.
-    // The sheet's vein tab reads the raw export here, which is 0 for most
-    // saves, so portals are opt-in until there is something to check against.
+    // Portals turn a share of nodes into veins of the portaled ore's own zone,
+    // so they belong in the rate (wiki: Drones, Void Drone Mechanics). The
+    // sheet's vein tab leaves them out because it reads the raw export value.
     var portalChance = state.veinPortals ? clamp01(num(totals.void_portal_chance, 0)) : 0;
     var baseMulti = num(totals.void_portal_base_multi, 1) * num(totals.void_portal_multi, 1);
     var goldPortal = clamp01(num(totals.golden_void_portal_chance, 0));
