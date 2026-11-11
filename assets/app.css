@@ -173,3 +173,22 @@ details[open] summary { margin-bottom: 10px; }
 .notice.ok { border-color: #2e4a37; background: #17251b; color: var(--good); }
 
 footer { color: var(--muted); font-size: 12.5px; padding-bottom: 40px; border-top: 1px solid var(--line); padding-top: 18px; }
+
+.tip { position: relative; border-bottom: 1px dotted #4a5361; cursor: help; }
+.tip .tip-body {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 1.5em;
+  z-index: 30;
+  width: 280px;
+  background: #0f1217;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.tip:hover .tip-body, .tip:focus .tip-body { display: block; }

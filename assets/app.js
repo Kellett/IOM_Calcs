@@ -237,6 +237,34 @@
     });
   }
 
+  function humanise(name) {
+    return String(name)
+      .replace(/_/g, ' ')
+      .replace(/ multi$/, ' multiplier')
+      .replace(/ percent$/, ' (%)')
+      .replace(/ seconds$/, ' (seconds)')
+      .replace(/^is /, '');
+  }
+
+  function explainRow(row) {
+    var verbs = { add: 'adds to', multiply: 'multiplies', independent: 'adds independently to', replace: 'replaces' };
+    var bases = {
+      literal: 'typed in by hand on this row',
+      stat: 'taken from your export',
+      floorDebuff: 'the debuff on the floor you exported from',
+    };
+    return row.source + ' (' + row.section + ') ' + (verbs[row.method] || 'modifies') + ' ' +
+      humanise(row.stat) + '. The starting value is ' + (bases[row.base.kind] || 'provided') + '.';
+  }
+
+  function tip(el, text) {
+    var body = document.createElement('div');
+    body.className = 'tip-body';
+    body.textContent = text;
+    el.appendChild(body);
+    el.tabIndex = 0;
+  }
+
   function cell(row, text, cls) {
     var td = document.createElement('td');
     td.textContent = text;
@@ -271,6 +299,9 @@
     DATA.stats.forEach(function (stat) {
       var tr = document.createElement('tr');
       var nameCell = cell(tr, stat.name);
+      nameCell.className = 'tip';
+      tip(nameCell, humanise(stat.name) + ' (' + stat.type + '). ' +
+        (state.fromExport[stat.name] ? 'Came from your export.' : 'Not in your export, so type a value here.'));
       if (!state.fromExport[stat.name]) {
         var badge = document.createElement('span');
         badge.className = 'manual';
@@ -353,8 +384,9 @@
         if (!toggle) return;
 
         var src = document.createElement('span');
-        src.className = 'src';
-        src.textContent = row.source + ' → ' + row.stat;
+        src.className = 'src tip';
+        src.textContent = row.source + ' → ' + humanise(row.stat);
+        tip(src, explainRow(row));
         grid.appendChild(src);
 
         var baseCell = document.createElement('span');
@@ -373,8 +405,12 @@
           baseCell.appendChild(input);
         } else {
           baseCell.textContent = IOM.formatNumber(baseOf(row, index))
-            + (row.base.kind === 'stat' ? ' (from export)' : ' (floor)');
+            + (row.base.kind === 'stat' ? ' (from export)' : ' (floor debuff)');
           baseCell.style.color = 'var(--muted)';
+          baseCell.className = 'tip';
+          tip(baseCell, row.base.kind === 'stat'
+            ? 'Comes from your export, not from this row. Toggle it to see what removing or adding it would do.'
+            : 'The stat penalty on the floor you exported from.');
         }
         grid.appendChild(baseCell);
 
