@@ -209,6 +209,7 @@
       voidDrone: false,
       tier2Dock: true,
       obeliskLevel: null,
+      armourFactor: 1,
       veinMorph: 0.143,
       veinGolden: 0.143,
       w3SpeedFix: true,
@@ -268,6 +269,9 @@
 
     if (isFinite(num(parsed.stats.current_floor, NaN))) {
       state.exportFloor = num(parsed.stats.current_floor, state.exportFloor);
+    }
+    if (isFinite(num(parsed.stats.obelisk_armor_reduction, NaN))) {
+      state.armourFactor = num(parsed.stats.obelisk_armor_reduction, 1);
     }
     if (isFinite(num(parsed.stats.obelisk_level, NaN))) {
       state.obeliskLevel = num(parsed.stats.obelisk_level, 0);
@@ -830,7 +834,8 @@
 
   // Observed values from the game win over the formula, since armour is lowered
   // by upgrades and artifacts that the export does not fully describe.
-  function obeliskLookup(level) {
+  function obeliskLookup(level, armourFactor) {
+    var factor = typeof armourFactor === 'number' && isFinite(armourFactor) ? armourFactor : 1;
     var list = DATA.obelisks || [];
     for (var i = 0; i < list.length; i++) {
       if (list[i].level === level) {
@@ -838,7 +843,7 @@
         return {
           level: level,
           hp: num(hit.hp, obeliskBaseHealth(level)),
-          armour: num(hit.armour, obeliskBaseArmour(level)),
+          armour: num(hit.armour, obeliskBaseArmour(level) * factor),
           duration: num(hit.duration, 0),
         };
       }
@@ -847,7 +852,7 @@
     return {
       level: level,
       hp: obeliskBaseHealth(level),
-      armour: obeliskBaseArmour(level),
+      armour: Math.round(obeliskBaseArmour(level) * factor),
       duration: 0,
     };
   }

@@ -221,7 +221,7 @@
 
   function prefillObelisk() {
     if (state.obeliskHp || state.obeliskArmour) return;
-    var next = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1) : null;
+    var next = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1, state.armourFactor) : null;
     if (!next) return;
     state.obeliskHp = String(next.hp);
     state.obeliskArmour = String(next.armour);
@@ -234,7 +234,7 @@
     host.innerHTML = '';
     var hp = IOM.parseNumber($('obelisk-hp').value);
     var armour = IOM.parseNumber($('obelisk-armour').value);
-    var known = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1) : null;
+    var known = state.obeliskLevel ? IOM.obeliskLookup(state.obeliskLevel + 1, state.armourFactor) : null;
     var duration = known ? known.duration : 0;
     var m = IOM.obeliskModel(state, isFinite(hp) ? hp : 0, isFinite(armour) ? armour : 0, duration);
 
