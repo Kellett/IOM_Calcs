@@ -8,6 +8,18 @@
   var oresById = new Map(DATA.ores.map(function (o) { return [o.id, o]; }));
   var floorsById = new Map(DATA.floors.map(function (f) { return [f.id, f]; }));
 
+  // Which world an ore belongs to, and the first floor it turns up on.
+  var oreWorld = new Map();
+  var oreFirstFloor = new Map();
+  DATA.floors.forEach(function (f) {
+    [f.oreA.id, f.oreB.id].forEach(function (id) {
+      if (!oreFirstFloor.has(id) || f.id < oreFirstFloor.get(id)) {
+        oreFirstFloor.set(id, f.id);
+        oreWorld.set(id, f.world);
+      }
+    });
+  });
+
   var debuffsByFloor = new Map();
   DATA.floorDebuffs.forEach(function (d) {
     if (!debuffsByFloor.has(d.floorId)) debuffsByFloor.set(d.floorId, []);
@@ -83,6 +95,13 @@
     return v < 0 ? 0 : v > 1 ? 1 : v;
   }
 
+  function isOreUnlocked(oreId, state) {
+    if (!state.worldsUnlocked) return true;
+    var world = oreWorld.get(oreId);
+    if (!world) return true;
+    return world <= state.worldsUnlocked;
+  }
+
   function statType(name) {
     var m = meta.get(name);
     return m ? m.type : 'number';
@@ -98,6 +117,8 @@
       cards: { ore: num(params.cards.ore, 1), bar: num(params.cards.bar, 1) },
       bomb: 'none',
       exportFloor: num(params.exportFloor, 1),
+      worldsUnlocked: null,
+      showLockedOres: false,
       // The export already contains everything you had equipped, so every
       // adjustment starts switched off and the totals match the game.
       toggles: DATA.input.map(function (r) { return { export: r.withExport, use: r.withExport }; }),
@@ -152,6 +173,9 @@
 
     if (isFinite(num(parsed.stats.current_floor, NaN))) {
       state.exportFloor = num(parsed.stats.current_floor, state.exportFloor);
+    }
+    if (isFinite(num(parsed.stats.worlds_unlocked, NaN))) {
+      state.worldsUnlocked = num(parsed.stats.worlds_unlocked, 0);
     }
 
     state.version = parsed.version;
@@ -535,6 +559,9 @@
     embin: embin,
     oreEm: oreEm,
     oreCardOf: oreCardOf,
+    isOreUnlocked: isOreUnlocked,
+    oreFirstFloor: oreFirstFloor,
+    oreWorld: oreWorld,
     barCardOf: barCardOf,
     craftEm: craftEm,
     transEm: transEm,

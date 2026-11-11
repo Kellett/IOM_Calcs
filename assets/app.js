@@ -20,6 +20,8 @@
       if (saved.fromExport) base.fromExport = saved.fromExport;
       if (saved.bases) base.bases = saved.bases;
       if (saved.bomb) base.bomb = saved.bomb;
+      if (saved.worldsUnlocked !== undefined) base.worldsUnlocked = saved.worldsUnlocked;
+      if (saved.showLockedOres) base.showLockedOres = true;
       if (saved.cards) {
         if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
         if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
@@ -110,16 +112,28 @@
   function fillOreSelect(select) {
     var keep = select.value;
     var first = null;
+    var kept = false;
     select.innerHTML = '';
     DATA.ores.forEach(function (ore) {
+      var unlocked = IOM.isOreUnlocked(ore.id, state);
+      if (!unlocked && !state.showLockedOres) return;
       var value = String(ore.id);
       if (first === null) first = value;
       var opt = document.createElement('option');
       opt.value = value;
-      opt.textContent = ore.name;
+      opt.textContent = unlocked ? ore.name : ore.name + ' (locked)';
       select.appendChild(opt);
+      if (value === keep) kept = true;
     });
-    select.value = keep || first || '';
+    select.value = kept ? keep : (first || '');
+  }
+
+  function refreshOreSelects() {
+    fillOreSelect($('floor-ore'));
+    fillOreSelect($('farm-ore'));
+    document.querySelectorAll('.ore-locked').forEach(function (box) {
+      box.checked = !!state.showLockedOres;
+    });
   }
 
   function cell(row, text, cls) {
@@ -479,6 +493,7 @@
 
   function refreshAll() {
     renderStatus();
+    refreshOreSelects();
     renderCards();
     $('bomb-in-use').value = state.bomb;
     renderMods();
@@ -543,8 +558,16 @@
   bindCard('card-ore', 'ore');
   bindCard('card-bar', 'bar');
 
-  fillOreSelect($('floor-ore'));
-  fillOreSelect($('farm-ore'));
+  document.querySelectorAll('.ore-locked').forEach(function (box) {
+    box.addEventListener('change', function () {
+      state.showLockedOres = box.checked;
+      save();
+      refreshOreSelects();
+      renderFloors();
+      renderFarm();
+    });
+  });
+  refreshOreSelects();
   recalc();
   refreshAll();
 })();
