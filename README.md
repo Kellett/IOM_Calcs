@@ -55,19 +55,20 @@ veins/hr     = veins/screen x 2880 x gameSpeed x floorSpeed x income x variant
 
 Ported from the Best Veins tab of v3.3.6 and checked against that sheet's own output for Neon Vein: veins per screen `3.050513544` and every in-zone floor matching to 2.6e-11.
 
-Void portals are included. The wiki states that a portaled ore can turn into a vein
-of its own zone, using that ore's rarity, and that vein income is multiplied by the
-portal the same way ore is. That makes the portal share of the rate:
+Void portals only count while the Void Drone is equipped, which is read from
+`is_drone_void_equipped` in the export and can be toggled on Loadout. With it on, a
+portaled ore can turn into a vein of its own zone, using that ore's rarity, and vein
+income is multiplied by the portal the same way ore is. That makes the portal share
+of the rate:
 
 ```
 portalShare x floorMultiplier x (shareA x oreWeight(oreA) + shareB x oreWeight(oreB)) x averagePortalMulti
 ```
 
 `oreWeight(i)` is the chance that a random ore between 1 and `i` falls inside the
-vein's ore range, which is the same shape the sheet uses. The sheet's own vein tab
-leaves this out because it reads the raw export value, which is 0 on most saves, so
-expect its numbers to read lower. Untick Include void portals on Loadout to compare
-against it directly.
+vein's ore range, which is the same shape the sheet uses. The same flag drives the
+Include void portals checkboxes on Best floor and Farm time, so all three views
+agree on whether portals exist.
 
 ### Bombs
 

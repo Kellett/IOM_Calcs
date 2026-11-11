@@ -27,7 +27,7 @@
       if (isFinite(Number(saved.w4SpeedMod))) base.w4SpeedMod = Number(saved.w4SpeedMod);
       if (saved.w3SpeedFix !== undefined) base.w3SpeedFix = !!saved.w3SpeedFix;
       if (isFinite(Number(saved.vein2x))) base.vein2x = Number(saved.vein2x);
-      if (saved.veinPortals !== undefined) base.veinPortals = !!saved.veinPortals;
+      if (saved.voidDrone !== undefined) base.voidDrone = !!saved.voidDrone;
       if (saved.cards) {
         if (isFinite(Number(saved.cards.ore))) base.cards.ore = Number(saved.cards.ore);
         if (isFinite(Number(saved.cards.bar))) base.cards.bar = Number(saved.cards.bar);
@@ -387,11 +387,11 @@
     note.className = 'hint';
     note.style.marginTop = '14px';
     note.textContent = vein.name + ' runs floors ' + vein.firstFloor + ' to ' + vein.lastFloor +
-      ' at rarity ' + vein.rarity + '. ' + (state.veinPortals
-        ? 'Void portals are included at your resolved ' +
+      ' at rarity ' + vein.rarity + '. ' + (state.voidDrone
+        ? 'Void portals are on at your ' +
           (IOM.resolve(state).totals.void_portal_chance * 100).toFixed(0) +
-          '%, because a portaled ore can turn into a vein of its own zone. The sheet leaves them out, so these read higher than it does.'
-        : 'Void portals are left out to match the source sheet. Untick Include void portals on Loadout to put them back in.');
+          '% chance, so a portaled ore can turn into a vein of its own zone.'
+        : 'No Void Drone, so void portals are ignored, the same as the source sheet.');
     host.appendChild(note);
   }
 
@@ -618,9 +618,17 @@
 
   // -------------------------------------------------------------------- init
 
+  function syncVoidBoxes() {
+    ['floor-void', 'farm-void', 'vein-portals'].forEach(function (id) {
+      var node = $(id);
+      if (node) node.checked = !!state.voidDrone;
+    });
+  }
+
   function refreshAll() {
     renderStatus();
-    refreshOreSelects();
+    syncVoidBoxes();
+  refreshOreSelects();
     renderCards();
     $('bomb-in-use').value = state.bomb;
     renderMods();
@@ -672,8 +680,15 @@
     refreshAll();
   });
 
-  ['floor-ore', 'floor-metric', 'floor-void', 'floor-vein'].forEach(function (id) {
+  ['floor-ore', 'floor-metric', 'floor-vein'].forEach(function (id) {
     $(id).addEventListener('change', renderFloors);
+  });
+  $('floor-void').addEventListener('change', function () {
+    state.voidDrone = $('floor-void').checked;
+    syncVoidBoxes();
+    save();
+    renderFloors();
+    renderFarm();
   });
 
   $('floor-mode').addEventListener('change', function () {
@@ -696,11 +711,14 @@
       renderFloors();
     });
   });
-  $('vein-portals').checked = !!state.veinPortals;
+  $('vein-portals').checked = !!state.voidDrone;
   $('vein-portals').addEventListener('change', function () {
-    state.veinPortals = $('vein-portals').checked;
+    state.voidDrone = $('vein-portals').checked;
+    syncVoidBoxes();
     save();
+    recalc();
     renderFloors();
+    renderFarm();
   });
 
   $('w3-speed').checked = !!state.w3SpeedFix;
@@ -710,9 +728,16 @@
     recalc();
     renderFloors();
   });
-  ['farm-ore', 'farm-amount', 'farm-unit', 'farm-void'].forEach(function (id) {
+  ['farm-ore', 'farm-amount', 'farm-unit'].forEach(function (id) {
     $(id).addEventListener('input', renderFarm);
     $(id).addEventListener('change', renderFarm);
+  });
+  $('farm-void').addEventListener('change', function () {
+    state.voidDrone = $('farm-void').checked;
+    syncVoidBoxes();
+    save();
+    renderFloors();
+    renderFarm();
   });
 
   fillBombInUse();
@@ -724,11 +749,13 @@
     box.addEventListener('change', function () {
       state.showLockedOres = box.checked;
       save();
-      refreshOreSelects();
+      syncVoidBoxes();
+  refreshOreSelects();
       renderFloors();
       renderFarm();
     });
   });
+  syncVoidBoxes();
   refreshOreSelects();
   recalc();
   refreshAll();

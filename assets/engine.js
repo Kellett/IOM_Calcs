@@ -136,7 +136,7 @@
       exportFloor: num(params.exportFloor, 1),
       worldsUnlocked: null,
       vein2x: 0,
-      veinPortals: true,
+      voidDrone: false,
       veinMorph: 0.143,
       veinGolden: 0.143,
       w3SpeedFix: true,
@@ -196,6 +196,9 @@
 
     if (isFinite(num(parsed.stats.current_floor, NaN))) {
       state.exportFloor = num(parsed.stats.current_floor, state.exportFloor);
+    }
+    if ('is_drone_void_equipped' in parsed.stats) {
+      state.voidDrone = !!num(parsed.stats.is_drone_void_equipped, 0);
     }
     if (isFinite(num(parsed.stats.vein_2x_spawn_array, NaN))) {
       state.vein2x = num(parsed.stats.vein_2x_spawn_array, 0);
@@ -579,10 +582,10 @@
     // Void portals feed extra nodes in, weighted by the vein's own ore mix.
     // The sheet normalises this by ores per screen, which cancels out, leaving
     // just the share-weighted ore weights.
-    // Portals turn a share of nodes into veins of the portaled ore's own zone,
-    // so they belong in the rate (wiki: Drones, Void Drone Mechanics). The
-    // sheet's vein tab leaves them out because it reads the raw export value.
-    var portalChance = state.veinPortals ? clamp01(num(totals.void_portal_chance, 0)) : 0;
+    // Portals only exist while the Void Drone is equipped. With it on, a share
+    // of nodes become veins of the portaled ore's own zone (wiki: Drones,
+    // Void Drone Mechanics).
+    var portalChance = state.voidDrone ? clamp01(num(totals.void_portal_chance, 0)) : 0;
     var baseMulti = num(totals.void_portal_base_multi, 1) * num(totals.void_portal_multi, 1);
     var goldPortal = clamp01(num(totals.golden_void_portal_chance, 0));
     var goldPortalMulti = num(totals.golden_void_portal_multi, 1);
