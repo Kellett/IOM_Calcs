@@ -76,6 +76,9 @@
     fishing_super_shiny_multi: 'multi',
     fishing_tick_speed: 'number',
     fishing_tick_reduction_seconds: 'number',
+    fishing_double_tick_chance: 'chance',
+    fishing_triple_tick_chance: 'chance',
+    fishing_5x_tick_chance: 'chance',
     fishing_income_multi: 'multi',
   };
 
@@ -733,14 +736,40 @@
     var speed = Math.max(1, num(t.fishing_tick_speed, 100)) / 100;
     var interval = Math.max(0.05, (base - reduction) / speed);
 
+    // Ticks are global: one tick event advances every dock at once, and the
+    // double/triple/5x chances stack into an expected number of ticks per event.
+    var dbl = clamp01(num(t.fishing_double_tick_chance, 0));
+    var tri = clamp01(num(t.fishing_triple_tick_chance, 0));
+    var five = clamp01(num(t.fishing_five_tick_chance, 0));
+    var expectedTicks = 1 * (1 - dbl) * (1 - tri) * (1 - five)
+      + 2 * dbl * (1 - tri) * (1 - five)
+      + 3 * (1 - dbl) * tri * (1 - five)
+      + 5 * (1 - dbl) * (1 - tri) * five
+      + 6 * dbl * tri * (1 - five)
+      + 10 * dbl * (1 - tri) * five
+      + 15 * (1 - dbl) * tri * five
+      + 30 * dbl * tri * five;
+    var ticksPerHour = (3600 / interval) * expectedTicks;
+
+    var docks = (DATA.docks || []).map(function (dock) {
+      return {
+        name: dock.name,
+        ticks: num(dock.base, 1),
+        upgraded: num(dock.upgraded, dock.base),
+        rollsPerHour: ticksPerHour / Math.max(1, num(dock.base, 1)),
+      };
+    });
+
     return {
       valuePerTick: valuePerTick,
+      expectedTicks: expectedTicks,
+      ticksPerHour: ticksPerHour,
+      docks: docks,
       variants: variants,
       income: income,
       perTick: perTick,
       interval: interval,
-      ticksPerHour: 3600 / interval,
-      fishPerHour: perTick * (3600 / interval),
+      fishPerHour: perTick * ticksPerHour,
       rod: rod,
       capacity: capacity,
       dronePower: dronePower,

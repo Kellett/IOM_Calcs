@@ -113,10 +113,10 @@
     var cards = document.createElement('div');
     cards.className = 'cards';
     [
-      { label: 'Fish per hour', value: IOM.formatNumber(m.fishPerHour) },
+      { label: 'Ticks per hour', value: IOM.formatNumber(m.ticksPerHour), sub: m.expectedTicks.toFixed(2) + ' ticks per cycle' },
+      { label: 'Tick interval', value: m.interval.toFixed(3) + 's' },
       { label: 'Fish per tick', value: IOM.formatNumber(m.perTick) },
-      { label: 'Tick interval', value: m.interval.toFixed(3) + 's', sub: Math.round(m.ticksPerHour) + ' ticks/hour' },
-      { label: 'Variants', value: m.variants.toFixed(2) + 'x', sub: 'shiny and super shiny' },
+      { label: 'One dock, all power', value: IOM.formatNumber(m.fishPerHour), sub: 'not a real total' },
     ].forEach(function (item) {
       var card = document.createElement('div');
       card.className = 'card';
@@ -163,6 +163,30 @@
     wrap.appendChild(table);
     host.appendChild(wrap);
 
+    var dockTable = document.createElement('div');
+    dockTable.className = 'table-scroll';
+    dockTable.style.marginTop = '18px';
+    var dt = document.createElement('table');
+    dt.innerHTML = '<thead><tr><th>Dock</th><th class="num">Ticks to fill</th>' +
+      '<th class="num">Rolls per hour</th></tr></thead>';
+    var db = document.createElement('tbody');
+    m.docks.forEach(function (dock) {
+      var tr = document.createElement('tr');
+      cell(tr, dock.name);
+      cell(tr, String(dock.ticks) + (dock.upgraded !== dock.ticks ? ' (' + dock.upgraded + ')' : ''), 'num');
+      cell(tr, IOM.formatNumber(dock.rollsPerHour), 'num');
+      db.appendChild(tr);
+    });
+    dt.appendChild(db);
+    dockTable.appendChild(dt);
+    host.appendChild(dockTable);
+
+    var dockNote = document.createElement('p');
+    dockNote.className = 'hint';
+    dockNote.style.marginTop = '10px';
+    dockNote.textContent = 'A tick advances every unlocked dock at once, so these rolls happen in parallel. Bracketed numbers are the upgraded tick requirement from skills and tributes. Catch chance per roll needs the fish power rating for that dock, which the export does not carry.';
+    host.appendChild(dockNote);
+
     var dockWrap = document.createElement('label');
     dockWrap.className = 'check';
     dockWrap.style.display = 'inline-flex';
@@ -183,7 +207,7 @@
     var warning = document.createElement('p');
     warning.className = 'notice';
     warning.style.margin = '0 0 14px';
-    warning.textContent = 'This figure assumes every point of power goes to one dock. In game a tick advances every unlocked dock at once, and your power is split between them, so a real total needs per-dock power and each dock\'s tick requirement. Treat this as "one dock, all power".';
+    warning.textContent = 'Work in progress. Ticks and rolls per hour are solid. Fish per hour assumes every point of power goes to one dock, which is not how the game works: a tick advances every unlocked dock and your power is split between them. Capacities differ per fish and are not in the export, so per-dock catch rates still need the fish tables.';
     host.insertBefore(warning, cards);
 
     var note = document.createElement('p');
