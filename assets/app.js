@@ -325,6 +325,8 @@
     var sections = {};
     DATA.input.forEach(function (row, index) {
       if (row.method === 'replace') return;
+      // Floor rows come from the floor debuff table and follow the export floor.
+      if (row.section === 'Floor') return;
       row.__index = index;
       (sections[row.section] = sections[row.section] || []).push(row);
     });
@@ -370,7 +372,8 @@
           });
           baseCell.appendChild(input);
         } else {
-          baseCell.textContent = IOM.formatNumber(baseOf(row, index));
+          baseCell.textContent = IOM.formatNumber(baseOf(row, index))
+            + (row.base.kind === 'stat' ? ' (from export)' : ' (floor)');
           baseCell.style.color = 'var(--muted)';
         }
         grid.appendChild(baseCell);
