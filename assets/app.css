@@ -181,7 +181,9 @@ footer { color: var(--muted); font-size: 12.5px; padding-bottom: 40px; border-to
   left: 0;
   top: 1.5em;
   z-index: 30;
-  width: 280px;
+  width: 320px;
+  box-sizing: border-box;
+  white-space: normal;
   background: #0f1217;
   border: 1px solid var(--line);
   border-radius: 8px;

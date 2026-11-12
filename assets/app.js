@@ -369,6 +369,71 @@
     });
   }
 
+  // What each tracked stat means and what the calculators do with it. The
+  // wording that names a stat comes from the game's own string table; the rest
+  // describes how engine.js consumes it. Stats marked reference only are
+  // carried by the export but change no number here.
+  var STAT_NOTES = {
+    ores_per_screen: 'Ore types on a floor screen. Multiplies ore income and caps how many veins a screen can hold.',
+    multi_rock_chance: 'Triple Rock Chance: chance an ore counts three times, applied as a chance with a 3x multiplier.',
+    ore_income_multi: 'Straight multiplier on ore income.',
+    golden_ore_chance: 'Golden Ore Chance: chance an ore rolls golden.',
+    golden_ore_multi: 'Multiplier when an ore rolls golden.',
+    golden_floor_chance: 'Golden Floor Chance: first of the four floor rolls. The tiers chain golden, then rainbow, then galactic, then prismatic.',
+    golden_floor_multi: 'Multiplier when a floor rolls golden.',
+    rainbow_floor_chance: 'Rainbow Floor Chance: checked inside the golden roll.',
+    rainbow_floor_multi: 'Multiplier when a floor rolls rainbow.',
+    galactic_floor_chance: 'Galactic Floor Chance: checked inside the rainbow roll.',
+    galactic_floor_multi: 'Multiplier when a floor rolls galactic.',
+    prismatic_floor_chance: 'Prismatic Floor Chance: innermost of the four floor rolls.',
+    prismatic_floor_multi: 'Multiplier when a floor rolls prismatic.',
+    void_portal_base_multi: 'Void Portal Base Multiplier: applied before the ordinary portal multiplier.',
+    void_portal_chance: 'Void Portal Chance: chance an ore is portaled into a different ore. Portaled ore can also become a vein, of the portaled ore type.',
+    void_portal_multi: 'Multiplies the portal share on top of the base multiplier.',
+    golden_void_portal_chance: 'Golden Void Portal Chance: chance a portal rolls golden.',
+    golden_void_portal_multi: 'Multiplier when a portal rolls golden.',
+    rainbow_void_portal_chance: 'Rainbow Void Portal Chance: checked inside the golden portal roll.',
+    rainbow_void_portal_multi: 'Multiplier when a portal rolls rainbow.',
+    galactic_void_portal_chance: 'Galactic Void Portal Chance: checked inside the rainbow portal roll.',
+    galactic_void_portal_multi: 'Multiplier when a portal rolls galactic.',
+    free_craft_chance: 'Free Craft Chance: chance a craft costs nothing. Enters as 1/(1-chance), so it is capped just under 100%.',
+    double_craft_chance: 'Chance a craft yields 2x bars.',
+    triple_craft_chance: 'Chance a craft yields 3x bars.',
+    craft_5x_chance: 'Chance a craft yields 5x bars.',
+    craft_10x_chance: 'Chance a craft yields 10x bars.',
+    craft_20x_chance: 'Chance a craft yields 20x bars.',
+    craft_100x_chance: 'Chance a craft yields 100x bars.',
+    bar_output_multi: 'Bar Output Multiplier: applied to crafted and transmuted bars alike.',
+    bar_craft_cost_multi: 'Bar Craft Cost: fraction of the normal cost to craft a bar. Lower is better and the engine clamps it to 0 to 1.',
+    bomb_of_plenty_multi: 'Bomb of Plenty Multi: ore multiplier while Bomb of Plenty is in use.',
+    bomb_of_plenty_chance: 'Held at 1 when Bomb of Plenty is selected on Loadout and 0 otherwise, so it is not typed in.',
+    bomb_of_plenty_make_gold_chance: 'Chance Bomb of Plenty pays gold instead of ore. Used by the Bomb tab.',
+    bomb_transmuter_multi: 'Bars produced per transmute while the Transmuter is in use.',
+    bomb_transmuter_chance: 'Held at 1 when Transmuter is selected on Loadout and 0 otherwise, so it is not typed in.',
+    bomb_trans_apply_bop_chance: 'Chance the Transmuter also applies the Bomb of Plenty multiplier. Used by the Bomb tab.',
+    game_speed_multi: 'Game Speed: multiplies everything time based, so it enters both the ore rate and the vein rate.',
+    chain_fuel_grade: 'Fuel grade of the Chain drone. Its effect is already inside your export.',
+    is_drone_chain_equipped_and_fueled: 'Whether the Chain drone is equipped and fuelled.',
+    frogger_fuel_grade: 'Fuel grade of the Frogger drone.',
+    prism_fuel_grade: 'Fuel grade of the Prism drone.',
+    is_drone_prism_equipped: 'Whether the Prism drone is equipped.',
+    is_drone_prism_equipped_and_fueled: 'Whether the Prism drone is equipped and fuelled.',
+    minotaur_fuel_grade: 'Fuel grade of the Minotaur drone.',
+    is_drone_minotaur_equipped_and_fueled: 'Whether the Minotaur drone is equipped and fuelled.',
+    ore_sell_price_multi: 'Ore Sell Price: gold per bar arrives through the ore table rather than this stat.',
+    midas_fuel_grade: 'Fuel grade of the Midas drone.',
+    midas_gold_multi: 'Gold multiplier from the Midas drone.'
+  };
+
+  // Carried by the export but read by nothing in engine.js.
+  var REF_ONLY = new Set([
+    'chain_fuel_grade', 'is_drone_chain_equipped_and_fueled',
+    'frogger_fuel_grade',
+    'prism_fuel_grade', 'is_drone_prism_equipped', 'is_drone_prism_equipped_and_fueled',
+    'minotaur_fuel_grade', 'is_drone_minotaur_equipped_and_fueled',
+    'ore_sell_price_multi', 'midas_fuel_grade', 'midas_gold_multi'
+  ]);
+
   function humanise(name) {
     return String(name)
       .replace(/_/g, ' ')
@@ -431,8 +496,16 @@
       var tr = document.createElement('tr');
       var nameCell = cell(tr, stat.name);
       nameCell.className = 'tip';
-      tip(nameCell, humanise(stat.name) + ' (' + stat.type + '). ' +
-        (state.fromExport[stat.name] ? 'Came from your export.' : 'Not in your export, so type a value here.'));
+      var note = STAT_NOTES[stat.name];
+      var source;
+      if (IOM.DRIVEN_STATS.has(stat.name)) {
+        source = 'Set by the bomb pick on Loadout.';
+      } else if (REF_ONLY.has(stat.name)) {
+        source = 'The calculators do not use it, so editing it changes no number here.';
+      } else {
+        source = state.fromExport[stat.name] ? 'Came from your export.' : 'Not in your export, so type a value here.';
+      }
+      tip(nameCell, (note || humanise(stat.name) + ' (' + stat.type + ').') + ' ' + source);
       if (!state.fromExport[stat.name]) {
         var badge = document.createElement('span');
         badge.className = 'manual';
