@@ -235,8 +235,9 @@
     host.innerHTML = '';
     var hp = IOM.parseNumber($('obelisk-hp').value);
     var armour = IOM.parseNumber($('obelisk-armour').value);
-    // Wiki: fights start at 30 seconds, a legendary relic raises it, and the
-    // export carries obelisk_timer_add on top of that.
+    // Fights start at 30 seconds. The export carries obelisk_timer_add, which
+    // the game labels Bonus Obelisk Fight Length. The relic sits outside the
+    // exported stats, so its share is typed in.
     var timerAdd = IOM.resolve(state).totals.obelisk_timer_add;
     var relicBonus = IOM.parseNumber($('obelisk-relic').value);
     var duration = 30 + (isFinite(relicBonus) ? relicBonus : 0) + (isFinite(timerAdd) ? timerAdd : 0);
@@ -248,7 +249,7 @@
       { label: 'Average damage per hit', value: IOM.formatNumber(m.perHit) },
       { label: 'Damage per second', value: IOM.formatNumber(m.dps) },
       { label: 'Time to break', value: m.seconds === null ? '-' : IOM.formatDuration(m.seconds / 3600) },
-      { label: 'Fights needed', value: m.fights === null ? '-' : IOM.formatNumber(m.fights), sub: m.duration ? m.duration + 's per fight (30 base + relic + timer)' : 'no fight length' },
+      { label: 'Fights needed', value: m.fights === null ? '-' : IOM.formatNumber(m.fights), sub: m.duration ? m.duration + 's per fight (30 base + relic + bonus length)' : 'no fight length' },
     ].forEach(function (item) {
       var card = document.createElement('div');
       card.className = 'card';
@@ -260,6 +261,12 @@
       value.textContent = item.value;
       card.appendChild(label);
       card.appendChild(value);
+      if (item.sub) {
+        var sub = document.createElement('p');
+        sub.className = 'sub';
+        sub.textContent = item.sub;
+        card.appendChild(sub);
+      }
       cards.appendChild(card);
     });
     host.appendChild(cards);
@@ -287,6 +294,11 @@
     note.style.marginTop = '14px';
     note.textContent = 'Armour comes off the base hit before crits, so if base damage cannot beat it the obelisk cannot be hurt at all, however high the crit multiplier. Crit rolls are sequential: a super crit needs the crit roll first, which is why the chances multiply.';
     host.appendChild(note);
+
+    var lengthNote = document.createElement('p');
+    lengthNote.className = 'hint';
+    lengthNote.textContent = 'Bonus length is obelisk_timer_add from your export, which the game calls Bonus Obelisk Fight Length. The fight length relic is not part of that stat, so its share is the one number this panel asks for. Your last export held 100 of it.';
+    host.appendChild(lengthNote);
   }
 
   function renderStatus() {
