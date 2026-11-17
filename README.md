@@ -1,5 +1,7 @@
 # IOM Calcs
 
+<https://kellett.github.io/IOM_Calcs/>
+
 A browser calculator for Idle Obelisk Miner. Paste your `EXPORTSTATS` and it works
 out ore, bar and gold rates for every floor, then answers the three questions that
 actually matter: where to farm, how long something takes, and which bomb is better.
