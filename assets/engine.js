@@ -3,6 +3,7 @@
   'use strict';
 
   var DATA = root.GAME_DATA;
+  var FDATA = root.FISHING_DATA || { upgradeCosts: {} };
   var params = DATA.params;
 
   var oresById = new Map(DATA.ores.map(function (o) { return [o.id, o]; }));
@@ -213,6 +214,11 @@
       voidDrone: false,
       fishingDock: 'Lake',
       fishingPlaytime: 24,
+      fishingUpgrades: [],
+      fishingEnhance: [],
+      fishingSkills: [],
+      fishingTributes: [],
+      gemsPerHour: 0,
       obeliskLevel: null,
       armourFactor: 1,
       veinMorph: 0.143,
@@ -289,6 +295,18 @@
     }
     if (isFinite(num(parsed.stats.worlds_unlocked, NaN))) {
       state.worldsUnlocked = num(parsed.stats.worlds_unlocked, 0);
+    }
+    if (Array.isArray(parsed.stats.fishing_upgrades_array)) {
+      state.fishingUpgrades = parsed.stats.fishing_upgrades_array.slice();
+    }
+    if (Array.isArray(parsed.stats.fishing_enhance_array)) {
+      state.fishingEnhance = parsed.stats.fishing_enhance_array.slice();
+    }
+    if (Array.isArray(parsed.stats.skill_tree_nodes_array)) {
+      state.fishingSkills = parsed.stats.skill_tree_nodes_array.slice();
+    }
+    if (Array.isArray(parsed.stats.fishing_legendary_tribute_levels_array)) {
+      state.fishingTributes = parsed.stats.fishing_legendary_tribute_levels_array.slice();
     }
 
     state.version = parsed.version;
@@ -825,7 +843,7 @@
       };
     });
 
-    var dockTicks = Math.max(1, num(dockDef.base, 1));
+    var dockTicks = Math.max(1, num(state.fishingDockTicks, num(dockDef.base, 1)));
     var catchesPerHour = ticksPerHour / dockTicks;
 
     return {
@@ -865,10 +883,221 @@
     };
   }
 
-  // Obelisk damage. Crits roll in sequence: you only reach a super crit if the
-  // crit roll passed, and so on, which is why the chances multiply.
+  var UPGRADE_NAMES = [
+    'Fishing Rod', 'Fishing Drone (x1)', 'Upgrade Boat', 'Tick Speed',
+    'Fish Multiplier', 'Rod Multiplier', 'Drone Multiplier', 'Double Tick Chance',
+    'Fishing Drone (x2)', 'Shiny Fish Chance', 'Drone Base Power', 'Triple Tick Chance',
+    'Upgrade Tier 2 Boat', 'Shiny Multiplier', 'Tier 2 Dock Power', 'Super Shiny Chance',
+    'Poly Card Multi', 'Drone Cloner',
+  ];
+  var UPGRADE_MAX = [60, 50, 5, 40, 30, 20, 20, 30, 30, 25, 30, 25, 5, 20, 20, 20, 25, 30];
+
+  var ENHANCE_NAMES = [
+    'Fish Multiplier', 'Fishing Drone (x1)', 'Rod Multiplier', 'Tick Speed',
+    'Drone Multiplier', 'Token Multiplier', 'Double Tick Chance', 'Tiny Notice Chance',
+    'Shiny Multiplier', 'Fishing Drone (x3)', 'Tier 2 Dock Ticks', 'Triple Tick Chance',
+    'Super Shiny Multi', 'Tier 2 Dock Power', 'Poly Card Multi',
+  ];
+  var ENHANCE_MAX = [255, 25, 20, 20, 25, 20, 20, 20, 20, 20, 10, 20, 20, 20, 20];
+  var ENHANCE_COST = [
+    { base: 500, step: 500, cap: 99999 },
+    { base: 750, step: 500 },
+    { base: 850, step: 750 },
+    { base: 1000, step: 750 },
+    { base: 1150, step: 850 },
+    { base: 1250, step: 950 },
+    { base: 1450, step: 1050 },
+    { base: 1750, step: 1125 },
+    { base: 1950, step: 1325 },
+    { base: 2450, step: 1775 },
+    { base: 15000, step: 5000 },
+    { base: 4450, step: 3475 },
+    { base: 5550, step: 4250 },
+    { base: 7550, step: 4950 },
+    { base: 9550, step: 6250 },
+  ];
+
+  var SKILL_NAMES = [
+    'Fishing With Friends', 'Friendship Ended With Tier 1 Items',
+    "Let's Pick Up The Pace", 'With This Fish I Summon Two More Fish',
+    'Motley School', 'Completionist Gatekeeper',
+  ];
+  var SKILL_IDS = [42, 43, 44, 45, 51, 52];
+  var SKILL_MAX = [3, 3, 3, 3, 3, 3];
+  var SKILL_COST = [
+    [5000, 6250, 7750],
+    [6250, 7750, 9750],
+    [5000, 6250, 7750],
+    [6250, 7750, 9750],
+    [12500, 15625, 19500],
+    [12500, 15625, 19500],
+  ];
+
+  function enhanceCost(index, level) {
+    var c = ENHANCE_COST[index];
+    var value = c.base + c.step * level;
+    return c.cap ? Math.min(c.cap, value) : value;
+  }
+
+  // Ranks every purchase that is not maxed by the rate gain per million of its
+  // cost. Growth is measured by putting the state through fishingModel once
+  // with that one purchase added, so the tick chain and dock meter come along.
+  function fishingAdvisor(state) {
+    var current = fishingModel(state);
+    var base = current.fishPerHour;
+    var up = state.fishingUpgrades || [];
+    var en = state.fishingEnhance || [];
+    var sk = state.fishingSkills || [];
+    var tribute = state.fishingTributes || [];
+    var cloner = 1 + 0.05 * num(up[17], 0);
+    var t2sum = 1 + 0.05 * num(up[14], 0) + 0.05 * num(en[13], 0);
+    var abyss = num(tribute[5], 0) > 0 ? 3 : 0;
+    // Tick speed levels subtract from the 60 second base before the 3x elixir
+    // divides it, so one level moves the exported reduction by less than 0.5s.
+    var hardReduction = 0.5 * num(up[3], 0) + 0.5 * num(en[3], 0) + 2 * num(sk[44], 0);
+    var elixir = Math.max(1, (60 - hardReduction) / Math.max(0.05, current.interval));
+    var rows = [];
+
+    function trial(mutate) {
+      var copy = Object.assign({}, state);
+      copy.imported = Object.assign({}, state.imported);
+      mutate(copy.imported, copy);
+      return fishingModel(copy).fishPerHour;
+    }
+
+    function push(group, name, level, max, cost, currency, mutate, note) {
+      if (level >= max) return;
+      if (!(cost > 0)) return;
+      var next = trial(mutate);
+      var growth = base > 0 ? next / base - 1 : 0;
+      rows.push({
+        group: group,
+        name: name,
+        level: level,
+        max: max,
+        cost: cost,
+        currency: currency,
+        growth: growth,
+        rank: growth / cost * 1e6,
+        time: currency === 'fish'
+          ? (base > 0 ? cost / base : null)
+          : (num(state.gemsPerHour, 0) > 0 ? cost / num(state.gemsPerHour, 0) : null),
+        note: note || '',
+      });
+    }
+
+    UPGRADE_NAMES.forEach(function (name, index) {
+      var level = num(up[index], 0);
+      var max = UPGRADE_MAX[index];
+      var costs = FDATA.upgradeCosts[name] || [];
+      var cost = num(costs[level], 0);
+      if (name === 'Poly Card Multi') {
+        if (level < max) {
+          rows.push({
+            group: 'Fish upgrades', name: name, level: level, max: max,
+            cost: cost, currency: 'fish', growth: null, rank: null, time: null,
+            note: 'excluded: the sheet flags this growth as faulty',
+          });
+        }
+        return;
+      }
+      push('Fish upgrades', name, level, max, cost, 'fish', function (imp, copy) {
+        switch (index) {
+          case 0: imp.fishing_rod_power *= 1.16; break;
+          case 1: imp.fishing_drone_capacity += cloner; break;
+          case 3: imp.fishing_tick_reduction_seconds += 0.5 / elixir; break;
+          case 4: imp.fishing_income_multi *= (1 + 0.03 * (level + 1)) / (1 + 0.03 * level); break;
+          case 5: imp.fishing_rod_power *= (1 + 0.04 * (level + 1)) / (1 + 0.04 * level); break;
+          case 6: imp.fishing_drone_multiplier *= (1 + 0.06 * (level + 1)) / (1 + 0.06 * level); break;
+          case 7: imp.fishing_double_tick_chance += 0.005; break;
+          case 8: imp.fishing_drone_capacity += 2 * cloner; break;
+          case 9: imp.fishing_shiny_chance += 0.005; break;
+          case 10: imp.fishing_drone_power += 0.25; break;
+          case 11: imp.fishing_triple_tick_chance += 0.0035; break;
+          case 13: imp.fishing_shiny_multi *= (1 + 0.05 * (level + 1)) / (1 + 0.05 * level); break;
+          case 14: imp.fishing_tier2_dock_multi *= (t2sum + 0.05) / t2sum; break;
+          case 15: imp.fishing_super_shiny_chance += 0.01; break;
+          case 17: imp.fishing_drone_capacity *= (1 + 0.05 * (level + 1)) / (1 + 0.05 * level); break;
+          default: break;
+        }
+      }, name === 'Upgrade Boat' || name === 'Upgrade Tier 2 Boat' ? 'unlocks a dock, no rate change' : '');
+    });
+
+    ENHANCE_NAMES.forEach(function (name, index) {
+      var level = num(en[index], 0);
+      var max = ENHANCE_MAX[index];
+      var cost = enhanceCost(index, level);
+      if (name === 'Poly Card Multi') {
+        if (level < max) {
+          rows.push({
+            group: 'Gem enhancements', name: name, level: level, max: max,
+            cost: cost, currency: 'gems', growth: null, rank: null, time: null,
+            note: 'excluded: the sheet flags this growth as faulty',
+          });
+        }
+        return;
+      }
+      push('Gem enhancements', name, level, max, cost, 'gems', function (imp, copy) {
+        switch (index) {
+          case 0: imp.fishing_income_multi *= (1 + 0.05 * (level + 1)) / (1 + 0.05 * level); break;
+          case 1: imp.fishing_drone_capacity += cloner; break;
+          case 2: imp.fishing_rod_power *= (1 + 0.05 * (level + 1)) / (1 + 0.05 * level); break;
+          case 3: imp.fishing_tick_reduction_seconds += 0.5 / elixir; break;
+          case 4: imp.fishing_drone_multiplier *= (1 + 0.08 * (level + 1)) / (1 + 0.08 * level); break;
+          case 6: imp.fishing_double_tick_chance += 0.005; break;
+          case 8: imp.fishing_shiny_multi *= (1 + 0.05 * (level + 1)) / (1 + 0.05 * level); break;
+          case 9: imp.fishing_drone_capacity += 3 * cloner; break;
+          case 10: if (current.tier2) copy.fishingDockTicks = Math.max(1, current.dockTicks - 1); break;
+          case 11: imp.fishing_triple_tick_chance += 0.004; break;
+          case 12:
+            var superBase = 3 + 0.15 * level + abyss;
+            imp.fishing_super_shiny_multi *= (superBase + 0.15) / superBase;
+            break;
+          case 13: imp.fishing_tier2_dock_multi *= (t2sum + 0.05) / t2sum; break;
+          default: break;
+        }
+      });
+    });
+
+    SKILL_NAMES.forEach(function (name, index) {
+      var level = num(sk[SKILL_IDS[index]], 0);
+      var max = SKILL_MAX[index];
+      var cost = (SKILL_COST[index] || [])[level] || 0;
+      push('Skill tree', name, level, max, cost, 'gems', function (imp, copy) {
+        switch (index) {
+          case 0:
+            imp.fishing_drone_capacity += 5 * cloner;
+            imp.fishing_income_multi *= (1 + 0.03 * (level + 1)) / (1 + 0.03 * level);
+            break;
+          case 2:
+            imp.fishing_tick_reduction_seconds += 2 / elixir;
+            imp.fishing_triple_tick_chance += 0.01;
+            break;
+          case 4:
+            imp.fishing_drone_capacity += 5 * cloner;
+            imp.fishing_rod_power *= (1 + 0.1 * (level + 1)) / (1 + 0.1 * level);
+            break;
+          default:
+            break;
+        }
+      }, 'approximate: the sheet also applies pet and star components');
+    });
+
+    rows.sort(function (a, b) {
+      if (a.rank === null && b.rank === null) return 0;
+      if (a.rank === null) return 1;
+      if (b.rank === null) return -1;
+      return b.rank - a.rank;
+    });
+
+    return { rows: rows, fishPerHour: base, dockTicks: current.dockTicks };
+  }
+
+
   // Wiki: base health and armour both scale x2.8 per level to 60, then health
   // jumps to x30 and armour to x9.5 per level.
+  // Obelisk damage. Crits roll in sequence: you only reach a super crit if the
+  // crit roll passed, and so on, which is why the chances multiply.
   function obeliskBaseHealth(level) {
     if (level < 1) return 0;
     var value = level <= 60
@@ -1038,6 +1267,7 @@
     isOreUnlocked: isOreUnlocked,
     veinModel: veinModel,
     fishingModel: fishingModel,
+    fishingAdvisor: fishingAdvisor,
     dockNames: function () {
       return DATA.docks.map(function (d) { return d.name; });
     },

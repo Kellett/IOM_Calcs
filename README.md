@@ -109,6 +109,13 @@ fishing sheet uses. Fish per catch is dock power times income and the shiny chai
 fish per hour divides by the selected dock's tick requirement, which assumes every
 point of power is on that dock. The fish card and legendary tables are not ported.
 
+The upgrade advisor ranks every upgrade, enhancement and skill that is not maxed
+by growth per million of its cost. Growth is measured by putting the state through
+the same fishing model once with that one purchase added, so the tick chain and dock
+meter come along. Fish costs use the selected dock's fish per hour; gem costs use
+the gems per hour field. Poly card multi is excluded because the sheet flags its own
+growth calculation as faulty. Fish cards and tributes are a separate planner.
+
 The floor table is generated rather than stored: 132 floors × 2 ores × void on/off,
 528 rows, recomputed whenever a stat changes.
 

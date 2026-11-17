@@ -10,6 +10,11 @@
 
   function $(id) { return document.getElementById(id); }
 
+  function numGems(value) {
+    var n = Number(value);
+    return isFinite(n) ? n : 0;
+  }
+
   function load() {
     var base = IOM.emptyState();
     try {
@@ -30,6 +35,11 @@
       if (saved.voidDrone !== undefined) base.voidDrone = !!saved.voidDrone;
       if (typeof saved.fishingDock === 'string' && saved.fishingDock) base.fishingDock = saved.fishingDock;
       if (isFinite(Number(saved.fishingPlaytime))) base.fishingPlaytime = Number(saved.fishingPlaytime);
+      if (isFinite(Number(saved.gemsPerHour))) base.gemsPerHour = Number(saved.gemsPerHour);
+      if (Array.isArray(saved.fishingUpgrades)) base.fishingUpgrades = saved.fishingUpgrades;
+      if (Array.isArray(saved.fishingEnhance)) base.fishingEnhance = saved.fishingEnhance;
+      if (Array.isArray(saved.fishingSkills)) base.fishingSkills = saved.fishingSkills;
+      if (Array.isArray(saved.fishingTributes)) base.fishingTributes = saved.fishingTributes;
       if (saved.obeliskHp !== undefined) base.obeliskHp = saved.obeliskHp;
       if (saved.obeliskArmour !== undefined) base.obeliskArmour = saved.obeliskArmour;
       if (saved.obeliskRelic !== undefined) base.obeliskRelic = saved.obeliskRelic;
@@ -166,6 +176,33 @@
     playRow.appendChild(playInput);
     host.appendChild(playRow);
 
+    var gemsRow = document.createElement('label');
+    gemsRow.className = 'check';
+    gemsRow.style.display = 'inline-flex';
+    gemsRow.style.gap = '8px';
+    gemsRow.style.margin = '14px 0 0';
+    var gemsName = document.createElement('span');
+    gemsName.textContent = 'Gems per hour';
+    var gemsInput = document.createElement('input');
+    gemsInput.type = 'number';
+    gemsInput.min = '0';
+    gemsInput.step = '1';
+    gemsInput.style.width = '90px';
+    gemsInput.value = String(numGems(state.gemsPerHour));
+    gemsInput.addEventListener('change', function () {
+      var value = Number(gemsInput.value);
+      if (!isFinite(value) || value < 0) {
+        gemsInput.value = String(numGems(state.gemsPerHour));
+        return;
+      }
+      state.gemsPerHour = value;
+      save();
+      renderFishing();
+    });
+    gemsRow.appendChild(gemsName);
+    gemsRow.appendChild(gemsInput);
+    host.appendChild(gemsRow);
+
     var warning = document.createElement('p');
     warning.className = 'notice';
     warning.style.margin = '0 0 14px';
@@ -255,6 +292,63 @@
     dockNote.textContent = 'A tick advances every unlocked dock at once, so these rolls happen in parallel. Bracketed numbers are the upgraded tick requirement from skills and tributes.';
     host.appendChild(dockNote);
 
+    var adv = IOM.fishingAdvisor(state);
+    var advTitle = document.createElement('h3');
+    advTitle.textContent = 'Upgrade advisor';
+    host.appendChild(advTitle);
+
+    var advNote = document.createElement('p');
+    advNote.className = 'hint';
+    advNote.textContent = 'Only purchases that are not maxed. Growth is the change in fish per hour on this dock; rank is growth per million of the cost, so fish and gem rows are ranked separately. Time uses this dock and the gems per hour above.';
+    host.appendChild(advNote);
+
+    if (!adv.rows.length) {
+      var done = document.createElement('p');
+      done.className = 'hint';
+      done.textContent = 'Every modelled purchase is maxed.';
+      host.appendChild(done);
+    } else if (!(adv.fishPerHour > 0)) {
+      var need = document.createElement('p');
+      need.className = 'hint';
+      need.textContent = 'Import an export first. The ranking needs a fish rate to measure growth against.';
+      host.appendChild(need);
+    } else {
+    ['Fish upgrades', 'Gem enhancements', 'Skill tree'].forEach(function (group) {
+      var groupRows = adv.rows.filter(function (row) { return row.group === group; });
+      if (!groupRows.length) return;
+      var heading = document.createElement('h4');
+      heading.textContent = group;
+      host.appendChild(heading);
+
+      var advWrap = document.createElement('div');
+      advWrap.className = 'table-scroll';
+      var unit = group === 'Fish upgrades' ? 'fish' : 'gems';
+      var advTable = document.createElement('table');
+      advTable.innerHTML = '<thead><tr><th>Purchase</th><th class="num">Level</th>' +
+        '<th class="num">Next cost</th><th class="num">Growth</th>' +
+        '<th class="num">Gain per million ' + unit + '</th><th class="num">Time</th><th>Note</th></tr></thead>';
+      var advBody = document.createElement('tbody');
+      groupRows.forEach(function (row) {
+        var tr = document.createElement('tr');
+        cell(tr, row.name);
+        cell(tr, row.level + ' / ' + row.max, 'num');
+        cell(tr, IOM.formatNumber(row.cost) + ' ' + row.currency, 'num');
+        cell(tr, row.growth === null ? '-' : (row.growth * 100).toFixed(2) + '%', 'num');
+        cell(tr, row.rank === null ? '-' : row.rank.toFixed(2), 'num');
+        cell(tr, row.time === null ? '-' : IOM.formatDuration(row.time), 'num');
+        cell(tr, row.note || '');
+        advBody.appendChild(tr);
+      });
+      advTable.appendChild(advBody);
+      advWrap.appendChild(advTable);
+      host.appendChild(advWrap);
+    });
+    }
+
+    var advFoot = document.createElement('p');
+    advFoot.className = 'hint';
+    advFoot.textContent = 'Fish cards and legendary tributes are not in this ranking. Their growth needs per-fish power ratings and tribute costs, which the sheet keeps as a separate planner.';
+    host.appendChild(advFoot);
 
     var note = document.createElement('p');
     note.className = 'hint';
