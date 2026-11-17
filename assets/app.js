@@ -28,7 +28,8 @@
       if (saved.w3SpeedFix !== undefined) base.w3SpeedFix = !!saved.w3SpeedFix;
       if (isFinite(Number(saved.vein2x))) base.vein2x = Number(saved.vein2x);
       if (saved.voidDrone !== undefined) base.voidDrone = !!saved.voidDrone;
-      if (saved.tier2Dock !== undefined) base.tier2Dock = !!saved.tier2Dock;
+      if (typeof saved.fishingDock === 'string' && saved.fishingDock) base.fishingDock = saved.fishingDock;
+      if (isFinite(Number(saved.fishingPlaytime))) base.fishingPlaytime = Number(saved.fishingPlaytime);
       if (saved.obeliskHp !== undefined) base.obeliskHp = saved.obeliskHp;
       if (saved.obeliskArmour !== undefined) base.obeliskArmour = saved.obeliskArmour;
       if (saved.obeliskRelic !== undefined) base.obeliskRelic = saved.obeliskRelic;
@@ -113,13 +114,72 @@
     host.innerHTML = '';
     var m = IOM.fishingModel(state);
 
+    var dockRow = document.createElement('label');
+    dockRow.className = 'check';
+    dockRow.style.display = 'inline-flex';
+    dockRow.style.gap = '8px';
+    dockRow.style.margin = '0 0 14px';
+    var dockName = document.createElement('span');
+    dockName.textContent = 'Dock';
+    var dockSelect = document.createElement('select');
+    IOM.dockNames().forEach(function (name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      dockSelect.appendChild(opt);
+    });
+    dockSelect.value = state.fishingDock;
+    dockSelect.addEventListener('change', function () {
+      state.fishingDock = dockSelect.value;
+      save();
+      renderFishing();
+    });
+    dockRow.appendChild(dockName);
+    dockRow.appendChild(dockSelect);
+    host.appendChild(dockRow);
+
+    var playRow = document.createElement('label');
+    playRow.className = 'check';
+    playRow.style.display = 'inline-flex';
+    playRow.style.gap = '8px';
+    playRow.style.margin = '14px 0 0';
+    var playName = document.createElement('span');
+    playName.textContent = 'Lootbug active hours per day';
+    var playInput = document.createElement('input');
+    playInput.type = 'number';
+    playInput.min = '0';
+    playInput.max = '24';
+    playInput.step = '1';
+    playInput.style.width = '70px';
+    playInput.value = String(m.playtime);
+    playInput.addEventListener('change', function () {
+      var value = Number(playInput.value);
+      if (!isFinite(value) || value < 0 || value > 24) {
+        playInput.value = String(state.fishingPlaytime);
+        return;
+      }
+      state.fishingPlaytime = value;
+      save();
+      renderFishing();
+    });
+    playRow.appendChild(playName);
+    playRow.appendChild(playInput);
+    host.appendChild(playRow);
+
+    var warning = document.createElement('p');
+    warning.className = 'notice';
+    warning.style.margin = '0 0 14px';
+    warning.textContent = 'Work in progress. Tick rate now covers the clock, lootbug ticks and the double/triple/5x chain. Fish per hour assumes every point of power is on the selected dock and uses its base tick requirement; the upgraded column shows the other case. Catch chance per roll still needs the fish power ratings, which are not in the export.';
+    host.appendChild(warning);
+
     var cards = document.createElement('div');
     cards.className = 'cards';
     [
-      { label: 'Ticks per hour', value: IOM.formatNumber(m.ticksPerHour), sub: m.expectedTicks.toFixed(2) + ' ticks per cycle' },
-      { label: 'Tick interval', value: m.interval.toFixed(3) + 's' },
-      { label: 'Fish per tick', value: IOM.formatNumber(m.perTick) },
-      { label: 'One dock, all power', value: IOM.formatNumber(m.fishPerHour), sub: 'not a real total' },
+      { label: 'Ticks per hour', value: IOM.formatNumber(m.ticksPerHour), sub: IOM.formatNumber(m.clockTicks) + ' clock + ' + IOM.formatNumber(m.lootbugTicks) + ' lootbug' },
+      { label: 'Tick interval', value: m.interval.toFixed(2) + 's', sub: '60s base less ' + IOM.formatNumber(m.reduction) + 's reduction' },
+      { label: 'Fish per catch', value: IOM.formatNumber(m.perCatch), sub: m.dockName + ', all power there' },
+      { label: m.dockName + ' fish per hour', value: IOM.formatNumber(m.fishPerHour), sub: m.dockTicks + ' ticks per catch' },
+      { label: 'Lootbug ticks', value: IOM.formatNumber(m.lootbugTicks), sub: 'per hour on top of the clock' },
     ].forEach(function (item) {
       var card = document.createElement('div');
       card.className = 'card';
@@ -151,11 +211,15 @@
       ['Drone capacity', IOM.formatNumber(m.capacity)],
       ['Drone power', IOM.formatNumber(m.dronePower)],
       ['Drone multiplier', IOM.formatNumber(m.droneMulti) + 'x'],
-      ['Dock power', IOM.formatNumber(m.dock) + 'x' + (m.tier2Dock ? ' (tier 2)' : ' (not applied)')],
+      ['Dock power', IOM.formatNumber(m.dockPower) + 'x' + (m.tier2 ? ' (tier 2)' : ' (tier 1)')],
       ['Shiny chance / multi', (m.shiny * 100).toFixed(1) + '% at ' + IOM.formatNumber(m.shinyMulti) + 'x'],
       ['Super shiny chance / multi', (m.superShiny * 100).toFixed(1) + '% at ' + IOM.formatNumber(m.superMulti) + 'x'],
       ['Income multiplier', IOM.formatNumber(m.income) + 'x'],
-      ['Tick speed / reduction', IOM.formatNumber(m.speed * 100) + '% and ' + IOM.formatNumber(m.reduction) + 's'],
+      ['Tick reduction', IOM.formatNumber(m.reduction) + 's'],
+      ['Tick speed stat', IOM.formatNumber(m.speed * 100) + '% (not used)'],
+      ['Lootbug spawn / triple / loot', IOM.formatNumber(m.lootSpawn) + ' / ' + (m.lootTriple * 100).toFixed(0) + '% / ' + IOM.formatNumber(m.lootMulti) + 'x'],
+      ['Lootbug active hours', m.playtime + ' per day'],
+      ['Expected ticks per event', IOM.formatNumber(m.expectedTicks)],
     ].forEach(function (pair) {
       var tr = document.createElement('tr');
       cell(tr, pair[0]);
@@ -171,13 +235,14 @@
     dockTable.style.marginTop = '18px';
     var dt = document.createElement('table');
     dt.innerHTML = '<thead><tr><th>Dock</th><th class="num">Ticks to fill</th>' +
-      '<th class="num">Rolls per hour</th></tr></thead>';
+      '<th class="num">Rolls per hour</th><th class="num">Upgraded</th></tr></thead>';
     var db = document.createElement('tbody');
     m.docks.forEach(function (dock) {
       var tr = document.createElement('tr');
       cell(tr, dock.name);
       cell(tr, String(dock.ticks) + (dock.upgraded !== dock.ticks ? ' (' + dock.upgraded + ')' : ''), 'num');
       cell(tr, IOM.formatNumber(dock.rollsPerHour), 'num');
+      cell(tr, IOM.formatNumber(dock.rollsPerHourUpgraded), 'num');
       db.appendChild(tr);
     });
     dt.appendChild(db);
@@ -187,36 +252,14 @@
     var dockNote = document.createElement('p');
     dockNote.className = 'hint';
     dockNote.style.marginTop = '10px';
-    dockNote.textContent = 'A tick advances every unlocked dock at once, so these rolls happen in parallel. Bracketed numbers are the upgraded tick requirement from skills and tributes. Catch chance per roll needs the fish power rating for that dock, which the export does not carry.';
+    dockNote.textContent = 'A tick advances every unlocked dock at once, so these rolls happen in parallel. Bracketed numbers are the upgraded tick requirement from skills and tributes.';
     host.appendChild(dockNote);
 
-    var dockWrap = document.createElement('label');
-    dockWrap.className = 'check';
-    dockWrap.style.display = 'inline-flex';
-    dockWrap.style.gap = '8px';
-    dockWrap.style.margin = '0 0 14px';
-    var dockBox = document.createElement('input');
-    dockBox.type = 'checkbox';
-    dockBox.checked = !!state.tier2Dock;
-    dockBox.addEventListener('change', function () {
-      state.tier2Dock = dockBox.checked;
-      save();
-      renderFishing();
-    });
-    dockWrap.appendChild(dockBox);
-    dockWrap.appendChild(document.createTextNode('Fishing a tier 2 dock'));
-    host.insertBefore(dockWrap, wrap);
-
-    var warning = document.createElement('p');
-    warning.className = 'notice';
-    warning.style.margin = '0 0 14px';
-    warning.textContent = 'Work in progress. Ticks and rolls per hour are solid. Fish per hour assumes every point of power goes to one dock, which is not how the game works: a tick advances every unlocked dock and your power is split between them. Capacities differ per fish and are not in the export, so per-dock catch rates still need the fish tables.';
-    host.insertBefore(warning, cards);
 
     var note = document.createElement('p');
     note.className = 'hint';
     note.style.marginTop = '14px';
-    note.textContent = 'Tick interval is (60 seconds minus your flat reduction) divided by tick speed as a percentage. Value per tick and the shiny chain are checked against the source sheet exactly; the tick interpretation is ours, so if the game disagrees this is the one number to correct.';
+    note.textContent = 'Tick interval is 60 seconds less the flat Fishing Tick Reduction stat, which already includes every source. The wiki gives the same base, and both community sheets compute the same figure from upgrade levels. The tick speed stat is shown for reference and is not a divisor. Lootbug ticks follow the new sheet: base cooldown, game speed, spawn rate, triple chance and loot multiplier, scaled by active hours. Fish per hour uses the total tick rate, so it reads higher than the sheet main Fish/Time cell, which counts the clock only. Angler ticks are not included because the export does not carry the Angler level.';
     host.appendChild(note);
   }
 

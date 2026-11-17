@@ -91,6 +91,24 @@ where `nested` lets a rarer floor type sit inside a more common one. Void portal
 ore is modelled separately from the base floor share, which is why a floor can
 show more than 100% of its own ore.
 
+### Fishing
+
+A dock fills its tick meter, then rolls catch chance against each fish. The tick
+interval is the wiki's 60 second base less the flat `fishing_tick_reduction_seconds`
+stat; the 3x elixir and every upgrade are already inside that figure.
+
+```
+clock ticks/hr = 3600 / (60 - reduction)
+lootbug ticks  = sheet v3.2.2 formula from game speed, spawn rate, triple chance
+                 and loot multiplier, scaled by active hours per day
+ticks/hr       = (clock + lootbug) x expected tick multiplier
+```
+
+The expected tick multiplier is the same eight-way double/triple/5x chain the
+fishing sheet uses. Fish per catch is dock power times income and the shiny chain;
+fish per hour divides by the selected dock's tick requirement, which assumes every
+point of power is on that dock. The fish card and legendary tables are not ported.
+
 The floor table is generated rather than stored: 132 floors × 2 ores × void on/off,
 528 rows, recomputed whenever a stat changes.
 

@@ -80,6 +80,9 @@
     fishing_triple_tick_chance: 'chance',
     fishing_5x_tick_chance: 'chance',
     fishing_income_multi: 'multi',
+    lootbug_spawn_rate: 'number',
+    lootbug_triple_chance: 'chance',
+    lootbug_loot_multi: 'multi',
   };
 
   Object.keys(FISH_STATS).forEach(function (name) {
@@ -208,7 +211,8 @@
       worldsUnlocked: null,
       vein2x: 0,
       voidDrone: false,
-      tier2Dock: true,
+      fishingDock: 'Lake',
+      fishingPlaytime: 24,
       obeliskLevel: null,
       armourFactor: 1,
       veinMorph: 0.143,
@@ -730,22 +734,30 @@
     return null;
   }
 
-  // Fishing. Value per tick and the variant chain are the sheet's, both of
-  // which reproduce its own output exactly. The tick interval depends on how
-  // fishing_tick_speed is meant to be read, so it is reported rather than hidden.
+  // Fishing. A dock fills its meter with ticks, then rolls catch chance against
+  // each fish. Values and the tick model follow the community sheet v3.2.2 and
+  // the wiki; the 5x tick chance is a separate roll in the same cycle.
   function fishingModel(state) {
     var t = resolve(state).totals;
     var rod = num(t.fishing_rod_power, 0);
     var capacity = num(t.fishing_drone_capacity, 0);
     var dronePower = num(t.fishing_drone_power, 0);
     var droneMulti = num(t.fishing_drone_multiplier, 1);
-    // fishing_tier2_dock_multi is the tier 2 dock power, so it only applies
-    // while you are fishing a tier 2 dock. Other docks carry their own power,
-    // which the export does not include.
-    var dock = state.tier2Dock ? Math.max(1, num(t.fishing_tier2_dock_multi, 1)) : 1;
     var income = num(t.fishing_income_multi, 1);
 
-    var valuePerTick = (rod + capacity * dronePower * droneMulti) * dock;
+    // Tier 2 dock power applies from Cave onwards, which is where the game's
+    // tier 2 boat upgrade starts. The export does not name the current dock.
+    var dockDef = null;
+    for (var d = 0; d < DATA.docks.length; d++) {
+      if (DATA.docks[d].name === state.fishingDock) {
+        dockDef = DATA.docks[d];
+        break;
+      }
+    }
+    if (!dockDef) dockDef = DATA.docks[0];
+    var tier2Docks = ['Cave', 'Volcano', 'Sky', 'Solaris', 'Galaxy'];
+    var tier2 = tier2Docks.indexOf(dockDef.name) >= 0;
+    var dockPower = tier2 ? Math.max(1, num(t.fishing_tier2_dock_multi, 1)) : 1;
 
     var shiny = clamp01(num(t.fishing_shiny_chance, 0));
     var shinyMulti = Math.max(1, num(t.fishing_shiny_multi, 1));
@@ -755,20 +767,25 @@
     var variants = (1 - shiny)
       + shiny * (1 - superShiny) * shinyMulti
       + shiny * superShiny * shinyMulti * superMulti;
-    var perTick = valuePerTick * income * variants;
 
-    // 60 seconds base, less the flat reductions, divided by the speed as a
-    // percentage. Floor of half a second so a silly export cannot divide by zero.
+    // Fish per successful catch: dock power times income and the shiny chain.
+    // Catch chance needs the fish power rating, which the export does not carry.
+    var perCatch = (rod + capacity * dronePower * droneMulti) * dockPower * income * variants;
+
+    // Wiki: 60 second base, reduced by the flat Fishing Tick Reduction stat.
+    // Both community sheets compute the same figure from upgrade levels, and
+    // the 3x elixir is already inside the reduction. The tick speed stat is a
+    // separate display value, not a divisor.
     var base = 60;
     var reduction = num(t.fishing_tick_reduction_seconds, 0);
-    var speed = Math.max(1, num(t.fishing_tick_speed, 100)) / 100;
-    var interval = Math.max(0.05, (base - reduction) / speed);
+    var interval = Math.max(0.05, base - reduction);
+    var clockTicks = 3600 / interval;
 
-    // Ticks are global: one tick event advances every dock at once, and the
-    // double/triple/5x chances stack into an expected number of ticks per event.
+    // A tick event can roll double, triple and 5x at once. The expected number
+    // of ticks is the sum over the eight combinations.
     var dbl = clamp01(num(t.fishing_double_tick_chance, 0));
     var tri = clamp01(num(t.fishing_triple_tick_chance, 0));
-    var five = clamp01(num(t.fishing_five_tick_chance, 0));
+    var five = clamp01(num(t.fishing_5x_tick_chance, 0));
     var expectedTicks = 1 * (1 - dbl) * (1 - tri) * (1 - five)
       + 2 * dbl * (1 - tri) * (1 - five)
       + 3 * (1 - dbl) * tri * (1 - five)
@@ -777,39 +794,74 @@
       + 10 * dbl * (1 - tri) * five
       + 15 * (1 - dbl) * tri * five
       + 30 * dbl * tri * five;
-    var ticksPerHour = (3600 / interval) * expectedTicks;
+
+    // Lootbugs hand out fishing ticks as they spawn, which the old sheet never
+    // counted. Formula from the new sheet: one hour over the base cooldown
+    // (1/72h) after game speed and spawn rate, times three ticks, 11/140, and
+    // twelve times the loot multiplier. Playtime scales the lot.
+    var gameSpeed = Math.max(0.01, num(t.game_speed_multi, 1));
+    var spawn = num(t.lootbug_spawn_rate, 0);
+    var lootTriple = num(t.lootbug_triple_chance, 0);
+    var lootMulti = Math.max(0, num(t.lootbug_loot_multi, 0));
+    var playtime = Math.max(0, Math.min(24, num(state.fishingPlaytime, 24)));
+    var lootbugTicks = 0;
+    if (spawn > 0 && lootMulti > 0) {
+      lootbugTicks = ((1 / 24) / ((1 / 72) / gameSpeed / spawn))
+        * (3 * Math.min(1, lootTriple)) * (11 / 140) * (12 * lootMulti) * (playtime / 24);
+    }
+
+    var tickEvents = clockTicks + lootbugTicks;
+    var ticksPerHour = tickEvents * expectedTicks;
 
     var docks = (DATA.docks || []).map(function (dock) {
+      var ticks = Math.max(1, num(dock.base, 1));
+      var upgraded = Math.max(1, num(dock.upgraded, ticks));
       return {
         name: dock.name,
-        ticks: num(dock.base, 1),
-        upgraded: num(dock.upgraded, dock.base),
-        rollsPerHour: ticksPerHour / Math.max(1, num(dock.base, 1)),
+        ticks: ticks,
+        upgraded: upgraded,
+        rollsPerHour: ticksPerHour / ticks,
+        rollsPerHourUpgraded: ticksPerHour / upgraded,
       };
     });
 
+    var dockTicks = Math.max(1, num(dockDef.base, 1));
+    var catchesPerHour = ticksPerHour / dockTicks;
+
     return {
-      valuePerTick: valuePerTick,
+      perCatch: perCatch,
+      perTick: perCatch,
       expectedTicks: expectedTicks,
       ticksPerHour: ticksPerHour,
+      tickEvents: tickEvents,
+      clockTicks: clockTicks,
+      lootbugTicks: lootbugTicks,
+      catchesPerHour: catchesPerHour,
+      fishPerHour: perCatch * catchesPerHour,
       docks: docks,
       variants: variants,
       income: income,
-      perTick: perTick,
       interval: interval,
-      fishPerHour: perTick * ticksPerHour,
       rod: rod,
       capacity: capacity,
       dronePower: dronePower,
       droneMulti: droneMulti,
-      dock: dock,
-      tier2Dock: !!state.tier2Dock,
+      dockPower: dockPower,
+      dock: dockPower,
+      dockName: dockDef.name,
+      dockTicks: dockTicks,
+      tier2: tier2,
+      tier2Dock: tier2,
       shiny: shiny,
       shinyMulti: shinyMulti,
       superShiny: superShiny,
       superMulti: superMulti,
-      speed: speed,
+      speed: Math.max(1, num(t.fishing_tick_speed, 100)) / 100,
       reduction: reduction,
+      lootSpawn: spawn,
+      lootTriple: lootTriple,
+      lootMulti: lootMulti,
+      playtime: playtime,
     };
   }
 
@@ -986,6 +1038,9 @@
     isOreUnlocked: isOreUnlocked,
     veinModel: veinModel,
     fishingModel: fishingModel,
+    dockNames: function () {
+      return DATA.docks.map(function (d) { return d.name; });
+    },
     obeliskModel: obeliskModel,
     obeliskLookup: obeliskLookup,
     obeliskBaseHealth: obeliskBaseHealth,
