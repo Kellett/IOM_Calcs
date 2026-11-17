@@ -40,6 +40,12 @@
       if (Array.isArray(saved.fishingEnhance)) base.fishingEnhance = saved.fishingEnhance;
       if (Array.isArray(saved.fishingSkills)) base.fishingSkills = saved.fishingSkills;
       if (Array.isArray(saved.fishingTributes)) base.fishingTributes = saved.fishingTributes;
+      if (saved.raw && typeof saved.raw === 'object') base.raw = saved.raw;
+      if (saved.gems && typeof saved.gems === 'object') {
+        Object.keys(base.gems).forEach(function (k) {
+          if (saved.gems[k] !== undefined) base.gems[k] = saved.gems[k];
+        });
+      }
       if (saved.obeliskHp !== undefined) base.obeliskHp = saved.obeliskHp;
       if (saved.obeliskArmour !== undefined) base.obeliskArmour = saved.obeliskArmour;
       if (saved.obeliskRelic !== undefined) base.obeliskRelic = saved.obeliskRelic;
@@ -367,9 +373,228 @@
     $('obelisk-armour').value = state.obeliskArmour;
   }
 
-  function renderObelisk() {
-    var host = $('obelisk-results');
+  function gemsSelect(labelText, options, value, handler) {
+    var label = document.createElement('label');
+    label.textContent = labelText;
+    var select = document.createElement('select');
+    options.forEach(function (pair) {
+      var opt = document.createElement('option');
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      select.appendChild(opt);
+    });
+    select.value = value;
+    select.addEventListener('change', function () { handler(select.value); });
+    label.appendChild(select);
+    return label;
+  }
+
+  function gemsNumber(labelText, value, step, handler) {
+    var label = document.createElement('label');
+    label.textContent = labelText;
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.step = String(step || 1);
+    input.min = '0';
+    input.style.width = '90px';
+    input.value = String(value);
+    input.addEventListener('change', function () {
+      var parsed = Number(input.value);
+      if (!isFinite(parsed) || parsed < 0) { input.value = String(value); return; }
+      handler(parsed);
+    });
+    label.appendChild(input);
+    return label;
+  }
+
+  function renderGems() {
+    var host = $('gems-results');
+    var controls = $('gems-controls');
     host.innerHTML = '';
+    controls.innerHTML = '';
+
+    if (!state.version) {
+      var empty = document.createElement('p');
+      empty.className = 'notice';
+      empty.textContent = 'Import your export first. The gem receipt needs a good deal more of it than the ore maths does.';
+      host.appendChild(empty);
+      return;
+    }
+
+    function changed() {
+      save();
+      renderGems();
+    }
+
+    var m = IOM.gemsModel(state);
+    var g = state.gems;
+
+    var row = document.createElement('div');
+    row.className = 'controls';
+    row.appendChild(gemsSelect('Autofiring', [
+      ['gem', 'Gem bomb'], ['battery', 'Battery bomb'], ['d20', 'D20 bomb'],
+      ['cherry', 'Cherry bomb'], ['plenty', 'Bomb of Plenty'],
+      ['transmuter', 'Transmuter'], ['veinmorpher', 'Veinmorpher'],
+    ], g.autofire, function (v) { g.autofire = v; changed(); }));
+    row.appendChild(gemsSelect('Cherry charges go to', [
+      ['gem', 'Gem bombs'], ['battery', 'Battery bomb'], ['d20', 'D20 bomb'],
+    ], g.cherryTarget, function (v) { g.cherryTarget = v; changed(); }));
+    row.appendChild(gemsNumber('Bombs unlocked', g.bombsUnlocked, 1, function (v) {
+      g.bombsUnlocked = Math.round(v); changed();
+    }));
+    row.appendChild(gemsNumber('Stonks gems', g.stonksGems, 1, function (v) { g.stonksGems = v; changed(); }));
+    row.appendChild(gemsNumber('Lootbug spawn (game min)', g.spawnMinutes, 0.1, function (v) { g.spawnMinutes = v; changed(); }));
+    row.appendChild(gemsNumber('Other fuel / hour', g.fuelPerHour, 0.1, function (v) { g.fuelPerHour = v; changed(); }));
+    controls.appendChild(row);
+
+    var row2 = document.createElement('div');
+    row2.className = 'controls';
+    var founder = document.createElement('label');
+    founder.className = 'check';
+    var founderBox = document.createElement('input');
+    founderBox.type = 'checkbox';
+    founderBox.checked = !!g.founder;
+    founderBox.addEventListener('change', function () { g.founder = founderBox.checked; changed(); });
+    founder.appendChild(founderBox);
+    var founderText = document.createElement('span');
+    founderText.textContent = 'Founder';
+    founder.appendChild(founderText);
+    row2.appendChild(founder);
+    if (g.founder) {
+      row2.appendChild(gemsNumber('VIP tier', g.founderTier, 1, function (v) {
+        g.founderTier = Math.max(1, Math.round(v)); changed();
+      }));
+    }
+    var magnets = document.createElement('label');
+    magnets.className = 'check';
+    var magnetBox = document.createElement('input');
+    magnetBox.type = 'checkbox';
+    magnetBox.checked = !!g.chargeMagnets;
+    magnetBox.addEventListener('change', function () { g.chargeMagnets = magnetBox.checked; changed(); });
+    magnets.appendChild(magnetBox);
+    var magnetText = document.createElement('span');
+    magnetText.textContent = 'Use Charge Magnets';
+    magnets.appendChild(magnetText);
+    row2.appendChild(magnets);
+    controls.appendChild(row2);
+
+    var buysWrap = document.createElement('div');
+    buysWrap.className = 'controls';
+    var buysLabel = document.createElement('span');
+    buysLabel.className = 'hint';
+    buysLabel.style.margin = '0 10px 0 0';
+    buysLabel.textContent = 'Lootbug buffs you always buy:';
+    buysWrap.appendChild(buysLabel);
+    m.paidBuffs.forEach(function (buff) {
+      if (!buff.weight) return;
+      var label = document.createElement('label');
+      label.className = 'check';
+      var box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = g.lootbugBuys.indexOf(buff.id) >= 0;
+      box.addEventListener('change', function () {
+        var list = g.lootbugBuys.filter(function (id) { return id !== buff.id; });
+        if (box.checked) list.push(buff.id);
+        g.lootbugBuys = list;
+        changed();
+      });
+      label.appendChild(box);
+      var buffText = document.createElement('span');
+      buffText.textContent = buff.label + ' (' + buff.cost + ' gems)';
+      label.appendChild(buffText);
+      buysWrap.appendChild(label);
+    });
+    controls.appendChild(buysWrap);
+
+    var cards = document.createElement('div');
+    cards.className = 'cards';
+    [
+      { label: 'Net gems per hour', value: IOM.formatNumber(m.net), sub: 'gross less what the drones burn' },
+      { label: 'Gross', value: IOM.formatNumber(m.gross), sub: (m.claims.toFixed(1) + ' freebie claims, ' + m.bugs.toFixed(0) + ' lootbugs an hour') },
+      { label: 'Recurring spend', value: '-' + IOM.formatNumber(m.spendingTotal), sub: 'fuel, plus any lootbug buffs you buy' },
+      { label: 'Offline gems per hour', value: IOM.formatNumber(m.offline), sub: 'gem bomb recharges only' },
+    ].forEach(function (item) {
+      var card = document.createElement('div');
+      card.className = 'card';
+      var label = document.createElement('div');
+      label.className = 'label';
+      label.textContent = item.label;
+      var value = document.createElement('div');
+      value.className = 'value';
+      value.textContent = item.value;
+      card.appendChild(label);
+      card.appendChild(value);
+      if (item.sub) {
+        var sub = document.createElement('p');
+        sub.className = 'sub';
+        sub.textContent = item.sub;
+        card.appendChild(sub);
+      }
+      cards.appendChild(card);
+    });
+    host.appendChild(cards);
+
+    var wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
+    var table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Source</th><th class="num">Gems / hour</th></tr></thead>';
+    var body = document.createElement('tbody');
+
+    m.lines.forEach(function (line) {
+      var tr = document.createElement('tr');
+      tr.className = 'receipt-parent';
+      var name = cell(tr, line.label);
+      if (line.note) tip(name, line.note);
+      cell(tr, line.amount === 0 ? '0' : IOM.formatNumber(line.amount), 'num');
+      body.appendChild(tr);
+      (line.children || []).forEach(function (child) {
+        var sub = document.createElement('tr');
+        sub.className = 'receipt-child';
+        cell(sub, child.label);
+        cell(sub, child.amount === 0 ? '0' : IOM.formatNumber(child.amount), 'num');
+        body.appendChild(sub);
+      });
+    });
+
+    var grossRow = document.createElement('tr');
+    grossRow.className = 'receipt-total';
+    cell(grossRow, 'Gross');
+    cell(grossRow, IOM.formatNumber(m.gross), 'num');
+    body.appendChild(grossRow);
+
+    m.spending.forEach(function (line) {
+      var tr = document.createElement('tr');
+      tr.className = 'receipt-child';
+      var name = cell(tr, line.label);
+      if (line.detail) tip(name, line.detail);
+      cell(tr, '-' + IOM.formatNumber(-line.amount), 'num');
+      body.appendChild(tr);
+    });
+
+    var netRow = document.createElement('tr');
+    netRow.className = 'receipt-total';
+    cell(netRow, 'Net');
+    cell(netRow, IOM.formatNumber(m.net) + ' /hr', 'num');
+    body.appendChild(netRow);
+
+    table.appendChild(body);
+    wrap.appendChild(table);
+    host.appendChild(wrap);
+
+    var note = document.createElement('p');
+    note.className = 'hint';
+    note.style.marginTop = '14px';
+    note.textContent = 'Gem chance is 3% plus 0.1% per pet quest, times 1.25 once a legendary tribute is at level 3. '
+      + 'Freebie claims run on game speed, and the cooldown, pack gems, instant refresh, jackpot and Stonks stats all come from the export. '
+      + 'Lootbug spawns are one per 20 game minutes times the spawn rate stat, triple chance folded in. '
+      + 'The 10x Bomb Recharge and Game Speed lootbug buffs are added as their own lines, as the gross with the buff less the gross without it. '
+      + 'Not modelled: one-off payouts (codes, events, bundles), the freebie banking cap, gifts and other jackpots that pay gems, '
+      + 'the damage meter and event item chests, and anything the export cannot see.';
+    host.appendChild(note);
+  }
+
+  function renderObelisk() {
+    var host = $('obelisk-results');    host.innerHTML = '';
     var hp = IOM.parseNumber($('obelisk-hp').value);
     var armour = IOM.parseNumber($('obelisk-armour').value);
     // Fights start at 30 seconds. The export carries obelisk_timer_add, which
@@ -1099,6 +1324,7 @@
     renderFarm();
     renderBomb();
     renderFishing();
+    renderGems();
     renderObelisk();
   }
 

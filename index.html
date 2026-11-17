@@ -24,6 +24,7 @@
   <button data-tab="farm">Farm time</button>
   <button data-tab="bomb">Bomb</button>
   <button data-tab="fishing">Fishing</button>
+  <button data-tab="gems">Gems</button>
   <button data-tab="obelisk">Obelisk</button>
   <button data-tab="about">About</button>
 </nav>
@@ -126,6 +127,13 @@
     <div id="fishing-results"></div>
   </section>
 
+  <section id="panel-gems" class="panel">
+    <h2>Gems per hour</h2>
+    <p class="hint">Every way gems arrive, and what the drones you keep fuelled cost, as a per-hour receipt. The formulas are a port of the <a href="https://gameutils.app/idle-obelisk-miner" target="_blank" rel="noreferrer">gameutils.app Idle Obelisk Miner</a> calculator by its author, which was written from the wiki. Checking it against that same page with this export matched every line.</p>
+    <div id="gems-controls"></div>
+    <div id="gems-results"></div>
+  </section>
+
   <section id="panel-obelisk" class="panel">
     <h2>Obelisk damage</h2>
     <p class="hint">Your pickaxe damage comes from the export, including the crit chain. Obelisk hit points and armour are the two things the game does not export, so enter them here.</p>
@@ -146,6 +154,7 @@
       <dt>Ports</dt><dd>IOM Calcs spreadsheet v1.1.1 (ores and floors) and Best Floor To Farm v3.3.6 (veins)</dd>
       <dt>Bomb model</dt><dd>Method from the Transmuter calculator at tabatkins.com/obelisk</dd>
       <dt>Veins</dt><dd>Zone table and per-floor chain from v3.3.6, checked against its own output for Neon Vein to within 3e-11. Void portals only count while the Void Drone is equipped.</dd>
+      <dt>Gems</dt><dd>Receipt ported from the gameutils.app Idle Obelisk Miner calculator and checked line by line against that page running this export: gross, spending, net and offline all match.</dd>
       <dt>Workbook read on</dt><dd>2026-11-11</dd>
       <dt>Data</dt><dd>86 ores, 132 floors, 136 floor debuffs, 49 tracked stats</dd>
     </dl>
@@ -153,6 +162,7 @@
     <p>The maths, the floor data and the whole structure of this came from the <strong>IOM Calcs</strong> spreadsheet by <strong>Taikuh</strong>. Without that sheet there is nothing here to port. If a number looks wrong, it is far more likely to be my transposition than their work.</p>
     <p>The bomb crossover works the way <a href="https://tabatkins.com/obelisk/transmuter/">tabatkins' Transmuter calculator</a> does it, which models the Transmuter reapplying BoP, rather than the simpler add-up in the sheet. That tool is also the reason this page reports a break-even instead of a winner per floor.</p>
     <p>The sheet itself credits the IOM Wiki for images, numbers and mechanics, the Total Resources Calculator for the quick-fill approach, Best Farming Floor as the backbone of the floor work, and Let's Go Fishing for the interface style.</p>
+    <p>The gems receipt is ported from the <a href="https://gameutils.app/idle-obelisk-miner" target="_blank" rel="noreferrer">Game Utilities Idle Obelisk Miner calculator</a>, whose author wrote it from the IOM Wiki's Store, Bombs, Lootbugs, Lootfrogs and Founder pages.</p>
     <p>Not affiliated with the game or its developers. No game files are read or modified; this only parses text you paste in.</p>
   </section>
 

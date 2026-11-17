@@ -194,3 +194,7 @@ footer { color: var(--muted); font-size: 12.5px; padding-bottom: 40px; border-to
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 .tip:hover .tip-body, .tip:focus .tip-body { display: block; }
+
+tr.receipt-child td:first-child { padding-left: 26px; color: var(--muted); }
+tr.receipt-parent td { font-weight: 600; }
+tr.receipt-total td { border-top: 1px solid var(--line); font-weight: 600; }

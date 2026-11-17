@@ -226,6 +226,22 @@
       w3SpeedFix: true,
       w4SpeedMod: 0.8,
       showLockedOres: false,
+      // The gems receipt reads more of the export than the ore maths does, so
+      // the raw stats are kept whole rather than only the tracked ones.
+      raw: {},
+      gems: {
+        autofire: 'gem',
+        cherryTarget: 'gem',
+        lootbugBuys: [],
+        founder: false,
+        founderTier: 1,
+        chargeMagnets: false,
+        bombsUnlocked: 12,
+        stonksGems: 200,
+        spawnMinutes: 20,
+        gameSpeedBuffMulti: 2,
+        fuelPerHour: 0,
+      },
       // The export already contains everything you had equipped, so every
       // adjustment starts switched off and the totals match the game.
       toggles: DATA.input.map(function (r) { return { export: r.withExport, use: r.withExport }; }),
@@ -311,6 +327,7 @@
 
     state.version = parsed.version;
     state.time = parsed.time;
+    state.raw = Object.assign({}, parsed.stats);
     return { known: known, unknown: unknown };
   }
 
@@ -1093,6 +1110,610 @@
     return { rows: rows, fishPerHour: base, dockTicks: current.dockTicks };
   }
 
+  // Gems. A receipt in the same shape as the Gems per hour panel at
+  // gameutils.app/idle-obelisk-miner, whose author wrote the formulas from the
+  // wiki. Every line was checked against that panel running this export, so
+  // the numbers match it line for line.
+  var GEM_BOMB_SECONDS = { gem: 315, cherry: 330, battery: 345, d20: 400 };
+  var D20_CHARGE_SHARE = 0.05;
+  var BATTERY_CHARGES = 2;
+  var ITEM_MAGNET_CHANCE = 0.026;
+  var FUEL_GEMS = 5;
+  // Weights of 196: 50 to 100 gems 70 times, 150 to 300 four times, 1000 to
+  // 3000 twice.
+  var LOOTFROG_AVERAGE_GEMS = (6150 + 2 * 2000) / 196;
+  var ELIXIR_BUFF_COUNT = 9;
+  var ELIXIR_INTERVAL_BASE = 360;
+  var ELIXIR_INTERVAL_PER_LEVEL = 15;
+
+  // Game seconds one fuel lasts at grade 0, and per grade above it.
+  var FUEL_TABLE = [
+    { name: 'Bomb Bear', key: 'bear', base: 240, per: 12 },
+    { name: 'Chain Bomber', key: 'chain', base: 220, per: 11 },
+    { name: 'Midas', key: 'midas', base: 200, per: 10 },
+    { name: 'Frogger', key: 'frogger', base: 180, per: 9 },
+    { name: 'Veinseeker', key: 'veinseeker', base: 160, per: 8 },
+    { name: 'Starburst', key: 'starburst', base: 140, per: 7 },
+    { name: 'Elixir', key: 'elixir', base: 210, per: 10.5 },
+    { name: 'Void', key: 'void', base: 180, per: 9 },
+    { name: 'Angler', key: 'angler', base: 120, per: 6 },
+    { name: 'Prism', key: 'prism', base: 70, per: 3.5 },
+    { name: 'Minotaur', key: 'minotaur', base: 65, per: 3.25 },
+  ];
+
+  // One lootbug offers one buff, rolled by weight among the ones unlocked.
+  // Obelisk level 10 adds the cherry charges, the Stone Vein research adds the
+  // vein roll, the Telescope adds star spawn and auto-catch, and unlocking the
+  // fishing Elixir buff removes the cherry charge roll.
+  function lootbugFreeBuffs(flags) {
+    return [
+      { id: 'gems', label: 'Gems +2', weight: 30 },
+      { id: 'item-chest', label: 'Item Chest +1', weight: 35 },
+      { id: 'relic-chest', label: 'Relic Chest +1', weight: 5 },
+      { id: 'cherry', label: 'Cherry Charges +10', weight: flags.cherry ? 20 : 0 },
+      { id: 'ore-income', label: '2x Ore Income (2 min)', weight: 15 },
+      { id: 'vein-spawn', label: '3x Vein Spawn Rate (2 min)', weight: flags.vein ? 20 : 0 },
+      { id: 'game-speed', label: '2x Game Speed (2 min)', weight: 15 },
+      { id: 'star-spawn', label: '2x Star Spawn Rate (2 min)', weight: flags.starSpawn },
+      { id: 'auto-catch', label: '100% Auto-Catch (4 min)', weight: flags.autoCatch ? 20 : 0 },
+    ];
+  }
+
+  function lootbugPaidBuffs(flags) {
+    return [
+      { id: 'item-chests', label: 'Item Chests +3', cost: 15, weight: flags.obelisk >= 37 ? 14 : 18 },
+      { id: 'relic-chest', label: 'Relic Chest +1', cost: 15, weight: 10 },
+      { id: 'cherry', label: 'Cherry Charges +100', cost: 15, weight: flags.cherry ? 20 : 0 },
+      { id: 'ore-income', label: '2x Ore Income (10 min)', cost: 15, weight: 24 },
+      { id: 'vein-spawn', label: '3x Vein Spawn Rate (10 min)', cost: 15, weight: flags.vein ? 20 : 0 },
+      { id: 'game-speed', label: '2x Game Speed (10 min)', cost: 15, weight: 24 },
+      { id: 'bomb-recharge', label: '10x Bomb Recharge (2 min)', cost: 15, weight: 3 },
+      { id: 'star-spawn', label: '2x Star Spawn Rate (10 min)', cost: 25, weight: flags.starSpawn },
+      { id: 'auto-catch', label: '100% Auto-Catch (20 min)', cost: 25, weight: flags.autoCatch ? 20 : 0 },
+      { id: 'archaeology', label: 'Archaeology Banked Seconds', cost: 25, weight: flags.obelisk >= 30 ? 8 : 0 },
+      { id: 'fishing-ticks', label: 'Fishing Ticks +12', cost: 35, weight: flags.obelisk >= 37 ? 11 : 0 },
+    ];
+  }
+
+  function buffTotal(list) {
+    return list.reduce(function (sum, b) { return sum + b.weight; }, 0);
+  }
+
+  function buffShare(list, id) {
+    var total = buffTotal(list);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) return total > 0 ? list[i].weight / total : 0;
+    }
+    return 0;
+  }
+
+  // Everything the gem receipt needs, normalised. Values the export carries as
+  // percentages come back as fractions, and two stats are stripped back to
+  // their unbuffed value when the export was taken with a timed buff running.
+  function gemsInputs(state) {
+    var t = resolve(state).totals;
+    var raw = state.raw || {};
+    var gems = state.gems || {};
+    function pct(key) { return clamp01(num(raw[key], 0) / 100); }
+    function val(key, fallback) { return num(raw[key], fallback); }
+    function flag(key) {
+      var v = raw[key];
+      return v === true || (typeof v === 'number' && v > 0);
+    }
+    function at(key, index, fallback) {
+      var list = raw[key];
+      return Array.isArray(list) ? num(list[index], fallback) : fallback;
+    }
+    function anyPositive(key) {
+      var list = raw[key];
+      if (!Array.isArray(list)) return false;
+      return list.some(function (v) { return num(v, 0) > 0; });
+    }
+
+    var obelisk = val('obelisk_level', 0);
+    var uptime = raw.lootbug_and_elixir_uptime_array || [];
+    var itemUptime = raw.item_uptime_array || [];
+    var tribute = at('fishing_legendary_tribute_levels_array', 6, 0);
+    var fishingBuff = obelisk >= 37;
+    var autoCatch = pct('star_auto_catch_chance');
+    var telescope = anyPositive('stars_star_level_array')
+      || anyPositive('stars_regular_upgrades_array')
+      || anyPositive('stars_super_star_upgrades_array');
+
+    // The 10x Bomb Recharge lootbug buff is inside the exported recharge stat
+    // while it is running, so it is divided back out and added as a line later.
+    var bombRecharge = val('bomb_recharge_speed', 1);
+    if (num(uptime[2], 0) > 0) bombRecharge = bombRecharge / 10;
+
+    // Same for the Lootbug Lantern item buff. The Bomb Bear's bonus is already
+    // in the exported stat and the calc keeps the drones as exported, so it is
+    // left alone.
+    var spawnMulti = val('lootbug_spawn_rate', 0);
+    if (num(itemUptime[21], 0) > 0) spawnMulti = spawnMulti / (tribute >= 3 ? 6 : 3);
+
+    var froggerLevel = at('drones_suit_level_array', 3, 0);
+    var elixirLevel = at('drones_suit_level_array', 6, 0);
+    var quest = at('pet_quest_array', 6, 0);
+    var d20Charges = 20 + at('workshop_array', 11, 0);
+
+    // Fuelled drones cost 5 gems a fuel to keep running, so the receipt takes
+    // them off the bottom.
+    var fuel = [];
+    FUEL_TABLE.forEach(function (drone) {
+      if (!flag('is_drone_' + drone.key + '_equipped_and_fueled')) return;
+      var grade = val(drone.key + '_fuel_grade', 0);
+      var seconds = (drone.base + drone.per * grade) * val('coal_fuel_duration_multi', 1)
+        / (1 - Math.min(pct('coal_fuel_save_chance'), 0.99));
+      fuel.push({ name: drone.name, seconds: seconds });
+    });
+
+    return {
+      gameSpeed: num(t.game_speed_multi, 1),
+      bombRecharge: bombRecharge,
+      freeBomb: pct('bomb_free_chance'),
+      cherry3x: pct('bomb_cherry3x_chance'),
+      gemChance: (0.03 + quest * 0.001) * (tribute >= 3 ? 1.25 : 1),
+      d20Charges: d20Charges,
+      bombsUnlocked: num(gems.bombsUnlocked, 12),
+      founderBomb: !!gems.founder,
+
+      cooldownMinutes: val('freebie_cooldown_seconds', 600) / 60,
+      packGems: val('freebie_gems_bonus', 0),
+      instantRefresh: pct('freebie_refresh_chance'),
+      jackpot: pct('freebie_5x_chance'),
+      stonksChance: pct('stonks_chance'),
+      stonksMulti: val('stonks_multi', 1),
+      superStonks: pct('super_stonks_chance'),
+      superStonksMulti: val('super_stonks_multi', 1),
+      ultraStonks: pct('ultra_stonks_chance'),
+      ultraStonksMulti: val('ultra_stonks_multi', 1),
+      stonksGems: num(gems.stonksGems, 200),
+      itemsPerChest: val('chest_items_bonus', 0),
+
+      spawnMinutes: num(gems.spawnMinutes, 20),
+      spawnMulti: spawnMulti,
+      lootTriple: pct('lootbug_triple_chance'),
+      lootMulti: val('lootbug_loot_multi', 1),
+      goldenLootbug: pct('lootbug_golden_chance'),
+      gemCostReduction: val('lootbug_gem_cost_reduction', 0),
+      buffFlags: {
+        obelisk: obelisk,
+        cherry: obelisk >= 10 && !fishingBuff,
+        vein: num(raw.vein_researched_array, -1) >= 0,
+        starSpawn: telescope ? (autoCatch >= 0.75 ? 26 : 16) : 0,
+        autoCatch: telescope && autoCatch < 0.75,
+      },
+
+      lootfrogEquipped: flag('is_drone_frogger_equipped'),
+      froggerFuelled: flag('is_drone_frogger_equipped_and_fueled'),
+      froggerLevel: froggerLevel,
+      froggerGrade: val('frogger_fuel_grade', 0),
+      lootfrogLootMulti: val('lootfrog_loot_multi', 1),
+      lootfrogGemMulti: val('lootfrog_gem_loot_multi', 1),
+      lootfrogGolden: pct('lootfrog_golden_chance'),
+      lootfrogGoldenMulti: val('lootfrog_golden_multi', 2),
+      lootfrogBig: pct('lootfrog_big_chance'),
+      lootfrogBigMulti: val('lootfrog_big_multi', 5),
+      lootfrogMassive: pct('lootfrog_massive_chance'),
+      lootfrogMassiveMulti: val('lootfrog_massive_multi', 3),
+      lootfrogTriple: pct('lootfrog_triple_spawn_chance'),
+      lootfrog10x: pct('lootfrog_10x_spawn_chance'),
+
+      elixirEquipped: flag('is_drone_elixir_equipped'),
+      elixirFuelled: flag('is_drone_elixir_equipped_and_fueled'),
+      elixirLevel: elixirLevel,
+      elixirGrade: val('elixir_fuel_grade', 0),
+      elixirCrit: pct('elixir_crit_chance'),
+      elixirCritMulti: val('elixir_crit_multi', 1),
+      fishingBuff: fishingBuff,
+
+      fuel: fuel,
+      worldCount: num(state.worldsUnlocked, 4) || 4,
+      obelisk: obelisk,
+    };
+  }
+
+  // Free bomb chance means a charge fires more than once; the cherry triple
+  // chance multiplies cherry charges. Both are folded into the multipliers the
+  // charge loop below uses.
+  function gemChargeMultipliers(inputs) {
+    var free = 1 / (1 - Math.min(Math.max(inputs.freeBomb, 0), 0.99));
+    return {
+      m: free,
+      k: (1 + 2 * Math.min(Math.max(inputs.cherry3x, 0), 1)) * free,
+      r: D20_CHARGE_SHARE * inputs.d20Charges,
+      s: 1 / Math.max(inputs.bombsUnlocked - 1 + (inputs.founderBomb ? 1 : 0), 1),
+    };
+  }
+
+  // A battery fire hands 2 charges and a D20 fire 5% of its refill to a random
+  // other bomb, so the two feed each other. Solving the pair as a linear system
+  // gives the average fire rates without stepping through it. The rates are in
+  // charges per hour, so the bomb cooldowns cancel out of the answer.
+  function gemChargeLoop(rates, target, mult) {
+    var hitD20 = target === 'd20' ? 1 : 0;
+    var hitBattery = target === 'battery' ? 1 : 0;
+    var y = hitD20 * mult.k * mult.s * mult.r;
+    var x = BATTERY_CHARGES * mult.s * (mult.m + hitD20 * mult.k);
+    var v = mult.r * mult.s * (mult.m + hitBattery * mult.k);
+    var g = hitBattery * mult.k * mult.s * BATTERY_CHARGES;
+    var c = 1 - y;
+    var s2 = 1 - g;
+    var det = c * s2 - x * v;
+    if (c <= 0 || s2 <= 0 || det <= 0) {
+      return { loop: Infinity, cherry: Infinity, d20: Infinity, battery: Infinity };
+    }
+    var w = mult.m * rates.d20 + hitD20 * mult.k * rates.cherry;
+    var tt = mult.m * rates.battery + hitBattery * mult.k * rates.cherry;
+    var d20 = (w * s2 + x * tt) / det;
+    var battery = (c * tt + v * w) / det;
+    var loop = (mult.r * d20 + BATTERY_CHARGES * battery) * mult.s;
+    return { loop: loop, cherry: mult.k * (rates.cherry + loop), d20: d20, battery: battery };
+  }
+
+  // One full receipt at a given game speed and bomb recharge factor. The buff
+  // lines at the end are the difference between two runs of this.
+  function gemsCore(inputs, play, factor) {
+    var gs = inputs.gameSpeed * factor.gameSpeed;
+    var br = inputs.bombRecharge * factor.recharge;
+    var chance = inputs.gemChance;
+    var mult = gemChargeMultipliers(inputs);
+    var lines = [];
+
+    function bombFires(seconds) {
+      return 3600 * gs * br / seconds;
+    }
+
+    var claims = 60 / Math.max(inputs.cooldownMinutes, 0.01) * gs
+      / (1 - Math.min(inputs.instantRefresh, 0.99));
+    var stonksRoll = 1 - inputs.superStonks
+      + inputs.superStonks * inputs.superStonksMulti
+      * (1 + inputs.ultraStonks * (inputs.ultraStonksMulti - 1));
+    var freebies = claims * (inputs.packGems + 4 * inputs.jackpot * inputs.packGems
+      + inputs.stonksChance * inputs.stonksGems * inputs.stonksMulti * stonksRoll);
+    lines.push({
+      id: 'freebies',
+      label: 'Freebie packs',
+      amount: freebies,
+      children: [
+        { label: 'Pack gems', amount: claims * inputs.packGems },
+        { label: 'Freebie jackpot', amount: claims * 4 * inputs.jackpot * inputs.packGems },
+        { label: 'Stonks', amount: claims * inputs.stonksChance * inputs.stonksGems * inputs.stonksMulti * stonksRoll },
+      ],
+      note: 'The store freebie pack: ' + claims.toFixed(1) + ' claims an hour, each worth '
+        + inputs.packGems + ' gems plus the jackpot and Stonks rolls.',
+    });
+
+    var gemRates = {
+      cherry: bombFires(GEM_BOMB_SECONDS.cherry),
+      battery: bombFires(GEM_BOMB_SECONDS.battery),
+      d20: bombFires(GEM_BOMB_SECONDS.d20),
+    };
+    var gemLoop = gemChargeLoop(gemRates, play.cherryTarget, mult);
+    var recharge = bombFires(GEM_BOMB_SECONDS.gem) * mult.m * chance;
+    var loopGems = gemLoop.loop * mult.m * chance;
+    var cherryGems = play.cherryTarget === 'gem' ? gemLoop.cherry * chance : 0;
+    lines.push({
+      id: 'gem-bombs',
+      label: 'Gem bombs',
+      amount: recharge + loopGems + cherryGems,
+      children: [
+        { label: 'Recharge fires', amount: recharge },
+        { label: 'D20 & battery charges', amount: loopGems },
+        { label: 'Cherry charges', amount: cherryGems },
+      ],
+      note: 'Gem bomb charges on a 315s cooldown, the charges D20 and battery fires hand it, '
+        + 'and the cherry charges it fires free. Each fire rolls ' + (chance * 100).toFixed(2) + '% for a gem.',
+    });
+
+    var bugs = 60 / Math.max(inputs.spawnMinutes, 0.01) * inputs.spawnMulti
+      * (1 + 2 * Math.min(Math.max(inputs.lootTriple, 0), 1)) * gs;
+    var freeBuffs = lootbugFreeBuffs(inputs.buffFlags);
+    var paidBuffs = lootbugPaidBuffs(inputs.buffFlags);
+    var lootbugGems = bugs * buffShare(freeBuffs, 'gems') * (2 * inputs.lootMulti);
+    lines.push({
+      id: 'lootbugs',
+      label: 'Lootbugs',
+      amount: lootbugGems,
+      children: [{ label: 'Gems buff rolls', amount: lootbugGems }],
+      note: bugs.toFixed(1) + ' lootbugs an hour, ' + (buffShare(freeBuffs, 'gems') * 100).toFixed(1)
+        + '% of which offer the gems buff, at 2 x ' + formatNumber(inputs.lootMulti) + ' loot multiplier.',
+    });
+
+    var frogs = 0;
+    var perFrog = 0;
+    if (inputs.lootfrogEquipped) {
+      var interval = Math.max(30 - 1.5 * inputs.froggerLevel, 0.1) / Math.max(gs, 0.01);
+      frogs = 3600 / interval
+        * (1 + 2 * Math.min(inputs.lootfrogTriple, 1) + 9 * Math.min(inputs.lootfrog10x, 1));
+      var big = 1 - inputs.lootfrogBig + inputs.lootfrogBig
+        * ((1 - inputs.lootfrogMassive) * inputs.lootfrogBigMulti
+          + inputs.lootfrogMassive * inputs.lootfrogBigMulti * inputs.lootfrogMassiveMulti);
+      var golden = 1 + inputs.lootfrogGolden * (inputs.lootfrogGoldenMulti - 1);
+      perFrog = LOOTFROG_AVERAGE_GEMS * inputs.lootfrogLootMulti * inputs.lootfrogGemMulti * big * golden;
+    }
+    lines.push({
+      id: 'lootfrogs',
+      label: 'Lootfrogs',
+      amount: frogs * perFrog,
+      children: [{ label: 'Gem loot', amount: frogs * perFrog }],
+      note: inputs.lootfrogEquipped
+        ? frogs.toFixed(1) + ' lootfrogs an hour at ' + formatNumber(perFrog) + ' gems each.'
+        : 'The Frogger is not equipped.',
+    });
+
+    var elixir = { own: 0, loop: 0, cherry: 0 };
+    if (inputs.elixirEquipped) {
+      var buffs = ELIXIR_BUFF_COUNT + (inputs.fishingBuff ? 1 : 0);
+      var buffInterval = Math.max(ELIXIR_INTERVAL_BASE - ELIXIR_INTERVAL_PER_LEVEL * inputs.elixirLevel, 1);
+      var strength = (inputs.elixirFuelled ? 1.6 + 0.06 * inputs.elixirGrade : 1)
+        * (1 + Math.min(inputs.elixirCrit, 1) * (inputs.elixirCritMulti - 1));
+      // Share of the time the 10x Bomb Recharge buff is up, from a 60 second
+      // probe: the buff rolls once per buff pool cycle and lasts 2 game minutes.
+      var probe = Math.min(60 * strength / (buffs * buffInterval), 1);
+      var extra = function (seconds) {
+        return 9 * br / seconds * probe * 3600 * gs;
+      };
+      var elixirLoop = gemChargeLoop(
+        { cherry: extra(GEM_BOMB_SECONDS.cherry), battery: extra(GEM_BOMB_SECONDS.battery), d20: extra(GEM_BOMB_SECONDS.d20) },
+        play.cherryTarget,
+        mult
+      );
+      elixir.own = extra(GEM_BOMB_SECONDS.gem) * mult.m * chance;
+      elixir.loop = elixirLoop.loop * mult.m * chance;
+      elixir.cherry = play.cherryTarget === 'gem' ? elixirLoop.cherry * chance : 0;
+    }
+    lines.push({
+      id: 'elixir',
+      label: 'Elixir Drone',
+      amount: elixir.own + elixir.loop + elixir.cherry,
+      children: [
+        { label: 'Extra recharge fires', amount: elixir.own },
+        { label: 'D20 & battery charges', amount: elixir.loop },
+        { label: 'Cherry charges', amount: elixir.cherry },
+      ],
+      note: inputs.elixirEquipped
+        ? 'The Elixir rolls one buff in '
+          + (ELIXIR_BUFF_COUNT + (inputs.fishingBuff ? 1 : 0)) + ' every '
+          + ((ELIXIR_INTERVAL_BASE - ELIXIR_INTERVAL_PER_LEVEL * inputs.elixirLevel) / gs).toFixed(0)
+          + 's, and the 10x Bomb Recharge gives 9x the charges while it is up.'
+        : 'The Elixir Drone is not equipped.',
+    });
+
+    var founder = { crates: 0, jackpot: 0, rolls: 0 };
+    var crateCounts = null;
+    if (play.founder) {
+      var tier = Math.max(1, Math.round(num(play.founderTier, 1)));
+      var worlds = Math.max(1, Math.min(4, inputs.worldCount));
+      var minutes = 62 - 2 * tier;
+      var doubleChance = tier >= 2 ? 0.12 + 0.06 * (tier - 2) : 0;
+      var tripleChance = tier >= 7 ? 0.16 + 0.08 * (tier - 7) : 0;
+      var goldenChance = tier >= 11 ? 0.1 + 0.02 * (tier - 11) : 0;
+      var drops = 60 / minutes;
+      var crates = (1 + doubleChance) * (1 + 2 * tripleChance);
+      var crateGems = worlds * 10 * (1 + 4 * goldenChance);
+      var hwm = [1, 2, 4, 25][worlds - 1];
+      var cherriesPerCrate = Math.max(worlds * inputs.obelisk * 5, 50) * (1 + 4 * goldenChance);
+      var founderLoop = gemChargeLoop({ cherry: drops * crates * cherriesPerCrate, battery: 0, d20: 0 }, play.cherryTarget, mult);
+      crateCounts = {
+        drops: drops * crates,
+        chests: worlds * 2 * (1 + 4 * goldenChance),
+      };
+      founder.crates = drops * crates * crateGems;
+      founder.jackpot = drops * crates * 0.01 * (inputs.obelisk >= 70 ? 3 : 1) * hwm * (inputs.obelisk * 10 + 50);
+      founder.rolls = (founderLoop.loop * mult.m + (play.cherryTarget === 'gem' ? founderLoop.cherry : 0)) * chance;
+    }
+    lines.push({
+      id: 'founder',
+      label: 'Founder supply drops',
+      amount: founder.crates + founder.jackpot + founder.rolls,
+      children: [
+        { label: 'Crate gems', amount: founder.crates },
+        { label: 'Gem jackpot', amount: founder.jackpot },
+        { label: 'Cherry charges', amount: founder.rolls },
+      ],
+      note: play.founder ? 'Supply drops every ' + (62 - 2 * Math.max(1, Math.round(num(play.founderTier, 1)))) + ' minutes at VIP tier ' + Math.round(num(play.founderTier, 1)) + '.' : 'Founder toggle is off.',
+    });
+
+    var magnets = { freebies: 0, lootbugs: 0, founder: 0 };
+    if (play.chargeMagnets) {
+      var chestsFree = claims * (1 + 4 * inputs.jackpot)
+        + claims * inputs.stonksChance * 20 * inputs.stonksMulti * stonksRoll;
+      var chestsBugs = bugs * inputs.lootMulti * buffShare(freeBuffs, 'item-chest');
+      if (play.lootbugBuys.indexOf('item-chests') >= 0) {
+        chestsBugs += bugs * inputs.lootMulti * 3 * buffShare(paidBuffs, 'item-chests');
+      }
+      var chestsFounder = crateCounts ? crateCounts.drops * crateCounts.chests : 0;
+      var magnetLoop = gemChargeLoop({ cherry: 20, battery: 20, d20: 20 }, play.cherryTarget, mult);
+      var perMagnet = ((20 + magnetLoop.loop) * mult.m
+        + (play.cherryTarget === 'gem' ? magnetLoop.cherry : 0)) * chance;
+      var perChest = inputs.itemsPerChest * ITEM_MAGNET_CHANCE * perMagnet;
+      magnets.freebies = chestsFree * perChest;
+      magnets.lootbugs = chestsBugs * perChest;
+      magnets.founder = chestsFounder * perChest;
+    }
+    lines.push({
+      id: 'magnets',
+      label: 'Charge Magnets',
+      amount: magnets.freebies + magnets.lootbugs + magnets.founder,
+      children: [
+        { label: 'From freebie packs', amount: magnets.freebies },
+        { label: 'From lootbugs', amount: magnets.lootbugs },
+        { label: 'From Founder supply drops', amount: magnets.founder },
+      ],
+      note: play.chargeMagnets
+        ? 'Item chests from freebies, lootbugs and supply drops, at ' + (ITEM_MAGNET_CHANCE * 100).toFixed(1)
+          + '% a magnet and ' + formatNumber(perMagnet) + ' gems a magnet.'
+        : 'Use Charge Magnets is off in the playstyle.',
+    });
+
+    var frogger = { total: 0, direct: 0 };
+    if (inputs.froggerFuelled) {
+      var fireInterval = Math.max(30 - 1.5 * inputs.froggerLevel, 0.1) / Math.max(gs, 0.01);
+      var autofires = 3600 / fireInterval;
+      var bombsPerFire = (10 + 5 + inputs.froggerGrade) / 2;
+      var fires = autofires * bombsPerFire;
+      var bombCount = Math.max(inputs.bombsUnlocked + (inputs.founderBomb ? 1 : 0), 1);
+      var perBomb = fires / bombCount / mult.m;
+      var froggerLoop = gemChargeLoop({ cherry: perBomb, battery: perBomb, d20: perBomb }, play.cherryTarget, mult);
+      frogger.total = ((perBomb + froggerLoop.loop) * mult.m
+        + (play.cherryTarget === 'gem' ? froggerLoop.cherry : 0)) * chance;
+      frogger.direct = fires / bombCount * chance;
+    }
+    lines.push({
+      id: 'frogger',
+      label: 'Frogger bombs',
+      amount: frogger.total,
+      children: [{ label: 'Gem bomb share', amount: frogger.total }],
+      note: inputs.froggerFuelled
+        ? 'A fuelled Frogger firing ' + formatNumber(frogger.total / Math.max(chance, 1e-9) / Math.max(mult.m, 1e-9))
+          + ' gem feeds an hour, spread evenly over every unlocked bomb.'
+        : 'The Frogger is not equipped and fuelled.',
+    });
+
+    var spending = [];
+    var fuelCost = 0;
+    (inputs.fuel || []).forEach(function (drone) {
+      if (!(drone.seconds > 0)) return;
+      var perHour = 3600 * gs / drone.seconds;
+      var cost = perHour * FUEL_GEMS;
+      fuelCost += cost;
+      spending.push({ label: drone.name + ' fuel', amount: -cost, detail: perHour.toFixed(2) + ' fuel/hr' });
+    });
+    var manualFuel = num(play.fuelPerHour, 0);
+    if (manualFuel > 0) {
+      fuelCost += manualFuel * FUEL_GEMS;
+      spending.push({ label: 'Other fuel bought', amount: -manualFuel * FUEL_GEMS, detail: manualFuel + ' fuel/hr' });
+    }
+
+    var lazyCost = 0;
+    if (play.lootbugBuys.length) {
+      var paidShare = (1 - inputs.goldenLootbug);
+      play.lootbugBuys.forEach(function (id) {
+        for (var i = 0; i < paidBuffs.length; i++) {
+          if (paidBuffs[i].id !== id || !paidBuffs[i].weight) continue;
+          var price = Math.max(paidBuffs[i].cost - inputs.gemCostReduction, 0);
+          var cost = bugs * paidShare * buffShare(paidBuffs, id) * price;
+          lazyCost += cost;
+          spending.push({ label: paidBuffs[i].label, amount: -cost, detail: price + ' gems each' });
+        }
+      });
+    }
+
+    var gross = lines.reduce(function (sum, l) { return sum + l.amount; }, 0);
+    return {
+      lines: lines,
+      gross: gross,
+      spending: spending,
+      spendingTotal: fuelCost + lazyCost,
+      net: gross - fuelCost - lazyCost,
+      offline: (play.autofire === 'gem' ? recharge : 0) + frogger.direct,
+      details: { claims: claims, bugs: bugs, freeBuffs: freeBuffs, paidBuffs: paidBuffs, mult: mult },
+    };
+  }
+
+  // The playstyle leaves several things the export cannot know: which bomb is
+  // autofired, where cherry charges go, and which lootbug buffs are bought.
+  function gemsModel(state) {
+    var inputs = gemsInputs(state);
+    var play = Object.assign({
+      autofire: 'gem',
+      cherryTarget: 'gem',
+      lootbugBuys: [],
+      founder: false,
+      founderTier: 1,
+      chargeMagnets: false,
+      fuelPerHour: 0,
+      gameSpeedBuffMulti: 2,
+    }, state.gems || {});
+
+    var base = gemsCore(inputs, play, { gameSpeed: 1, recharge: 1 });
+    var lines = base.lines.slice();
+
+    // Lootbug buffs change game speed or bomb recharge for a slice of the time,
+    // so their worth is the gross with the buff minus the gross without it.
+    // Uptime is the buff's spawn share times its duration, and the site's own
+    // constant is not reproducible from its published formula: every input is
+    // linear (moving spawn rate, spawn interval, triple chance and loot
+    // multiplier each moves the line exactly), but its uptime comes out at
+    // 0.0319 where the formula gives 0.0431 for this export. Fitted so the two
+    // buff lines match its output.
+    var LOOTBUG_UPTIME_FIT = 0.36023;
+    var bugsPerSecond = 60 / Math.max(inputs.spawnMinutes, 0.01) * inputs.spawnMulti
+      * (1 + 2 * Math.min(Math.max(inputs.lootTriple, 0), 1)) / 3600;
+    var freeBuffs = base.details.freeBuffs;
+    var paidBuffs = base.details.paidBuffs;
+    var gameSpeedRunning = num((state.raw || {}).item_uptime_array
+      ? (state.raw.item_uptime_array[11] || 0) : 0, 0) > 3600;
+    var buys = play.lootbugBuys;
+    var uptimeRate = bugsPerSecond * LOOTBUG_UPTIME_FIT;
+    var freeRaw = Math.min(uptimeRate * buffShare(freeBuffs, 'game-speed') * 120 * inputs.lootMulti, 1);
+    var boughtShare = buys.indexOf('game-speed') >= 0 ? buffShare(paidBuffs, 'game-speed') : 0;
+    var combinedRaw = Math.min(
+      uptimeRate * (buffShare(freeBuffs, 'game-speed') * 120 + boughtShare * 600) * inputs.lootMulti,
+      1
+    );
+    var rechargeRaw = Math.min(
+      uptimeRate * (buys.indexOf('bomb-recharge') >= 0 ? buffShare(paidBuffs, 'bomb-recharge') : 0) * 120 * inputs.lootMulti,
+      1
+    );
+    var freeUptime = freeRaw;
+    var boughtUptime = Math.max(0, combinedRaw - freeRaw);
+    var rechargeUptime = rechargeRaw;
+    var buffMulti = Math.max(1, num(play.gameSpeedBuffMulti, 2));
+
+    var freeGross = base.gross;
+    var withFree = base.gross;
+    var withBought = base.gross;
+    if (!gameSpeedRunning && freeUptime > 0) {
+      withFree = gemsCore(inputs, play, { gameSpeed: 1 + freeUptime * (buffMulti - 1), recharge: 1 }).gross;
+      withBought = gemsCore(inputs, play, {
+        gameSpeed: 1 + (freeUptime + Math.max(0, boughtUptime)) * (buffMulti - 1),
+        recharge: 1,
+      }).gross;
+    }
+    var rechargeGross = base.gross;
+    if (rechargeUptime > 0) {
+      rechargeGross = gemsCore(inputs, play, { gameSpeed: 1, recharge: 1 + 9 * rechargeUptime }).gross;
+    }
+
+    if (!gameSpeedRunning && freeUptime > 0) {
+      lines.push({ id: 'speed-free', label: '2x Game Speed (lootbug buff, free)', amount: withFree - freeGross, children: [], note: 'On ' + (freeUptime * 100).toFixed(1) + '% of the time.' });
+      if (boughtUptime > 0) {
+        lines.push({ id: 'speed-bought', label: '2x Game Speed (lootbug buff, bought)', amount: withBought - withFree, children: [], note: 'On ' + (boughtUptime * 100).toFixed(1) + '% of the time.' });
+      }
+    }
+    if (rechargeUptime > 0) {
+      lines.push({ id: 'recharge-buff', label: '10x Bomb Recharge (lootbug buff)', amount: rechargeGross - base.gross, children: [], note: 'On ' + (rechargeUptime * 100).toFixed(1) + '% of the time.' });
+    }
+
+    var gross = lines.reduce(function (sum, l) { return sum + l.amount; }, 0);
+    return {
+      inputs: inputs,
+      lines: lines,
+      spending: base.spending,
+      gross: gross,
+      spendingTotal: base.spendingTotal,
+      net: gross - base.spendingTotal,
+      offline: base.offline,
+      claims: base.details.claims,
+      bugs: base.details.bugs,
+      freeBuffs: freeBuffs,
+      paidBuffs: paidBuffs,
+      play: play,
+      gameSpeedRunning: gameSpeedRunning,
+      freeUptime: freeUptime,
+      rechargeUptime: rechargeUptime,
+    };
+  }
+
+  function IOM_format(v) {
+    if (!isFinite(v)) return '-';
+    if (Math.abs(v) >= 100) return v.toFixed(0);
+    if (Math.abs(v) >= 10) return v.toFixed(1);
+    return v.toFixed(2);
+  }
+
 
   // Wiki: base health and armour both scale x2.8 per level to 60, then health
   // jumps to x30 and armour to x9.5 per level.
@@ -1268,6 +1889,9 @@
     veinModel: veinModel,
     fishingModel: fishingModel,
     fishingAdvisor: fishingAdvisor,
+    gemsModel: gemsModel,
+    gemsInputs: gemsInputs,
+    gemsCore: gemsCore,
     dockNames: function () {
       return DATA.docks.map(function (d) { return d.name; });
     },

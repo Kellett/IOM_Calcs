@@ -119,6 +119,35 @@ growth calculation as faulty. Fish cards and tributes are a separate planner.
 The floor table is generated rather than stored: 132 floors × 2 ores × void on/off,
 528 rows, recomputed whenever a stat changes.
 
+### Gems
+
+The gems tab is a per-hour receipt of every source, and what the drones you keep
+fuelled cost. It is a port of the Game Utilities calculator's Gems per hour panel,
+which its author wrote from the wiki's Store, Bombs, Lootbugs, Lootfrogs and
+Founder pages.
+
+```
+freebies  = claims/hr × (pack gems + 4 × jackpot × pack gems + Stonks)
+claims/hr = 60 / cooldown minutes × game speed / (1 - instant refresh)
+gem bombs = (recharges + D20/battery charges) × fires per charge × gem chance
+            + cherry charges × gem chance
+lootbugs  = bugs/hr × the gems buff's share of the free buffs × 2 × loot multiplier
+elixir    = the 10x Bomb Recharge buff's extra charges, run through the same loop
+founder   = crate gems + the gem jackpot + cherry charges from supply drops
+magnets   = item chests/hr × items per chest × 2.6% × gems per magnet
+spend     = 5 gems per fuel for every fuelled drone, plus the lootbug buffs you buy
+```
+
+Gem chance is `(0.03 + 0.001 × pet quest 7) × 1.25` when a legendary tribute is at
+level 3. The D20 and battery feed each other, so the two fire rates are solved as a
+pair of linear equations rather than stepped. Cherry charges can be sent to the gem
+bomb, the battery or the D20, which changes the answer, so that is a control.
+
+The receipt was checked against gameutils.app with this export: every line matched,
+at default playstyle (gross 4516.11, spending -132.99, net 4383.12, offline 171.16),
+and again with Founder, Charge Magnets, all the lootbug buffs and a fourth world
+switched on (gross 5991.57, spending -878.16, net 5113.41).
+
 ## Where the numbers come from
 
 The formulas are ported from the community spreadsheet (`Main`, `Floors` and
@@ -139,6 +168,9 @@ needs regenerating if a game update adds floors or ores.
 - Gold per bar is derived from the sheet at a single card level, then scaled by the
   bar card. It matches the sheet but is not independently confirmed against the game.
 - Floors per hour is fixed at 2880, the value the sheet uses.
+- The gems receipt follows gameutils.app, including its two fitted lootbug buff
+  uptimes. The Frogger and lootfrog lines were not exercised because the drone is
+  not on this save.
 
 ## Running locally
 
