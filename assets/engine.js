@@ -219,6 +219,7 @@
       fishingSkills: [],
       fishingTributes: [],
       gemsPerHour: 0,
+      gemsManualRate: false,
       obeliskLevel: null,
       armourFactor: 1,
       veinMorph: 0.143,
@@ -962,6 +963,7 @@
   function fishingAdvisor(state) {
     var current = fishingModel(state);
     var base = current.fishPerHour;
+    var gemRate = gemsIncome(state);
     var up = state.fishingUpgrades || [];
     var en = state.fishingEnhance || [];
     var sk = state.fishingSkills || [];
@@ -998,7 +1000,7 @@
         rank: growth / cost * 1e6,
         time: currency === 'fish'
           ? (base > 0 ? cost / base : null)
-          : (num(state.gemsPerHour, 0) > 0 ? cost / num(state.gemsPerHour, 0) : null),
+          : (gemRate > 0 ? cost / gemRate : null),
         note: note || '',
       });
     }
@@ -1612,6 +1614,14 @@
     };
   }
 
+  // What the fishing advisor divides gem costs by: the net figure the Gems tab
+  // works out, unless a rate has been typed in by hand.
+  function gemsIncome(state) {
+    var manual = num(state.gemsPerHour, 0);
+    if (state.gemsManualRate && manual > 0) return manual;
+    return gemsModel(state).net;
+  }
+
   // The playstyle leaves several things the export cannot know: which bomb is
   // autofired, where cherry charges go, and which lootbug buffs are bought.
   function gemsModel(state) {
@@ -1890,6 +1900,7 @@
     fishingModel: fishingModel,
     fishingAdvisor: fishingAdvisor,
     gemsModel: gemsModel,
+    gemsIncome: gemsIncome,
     gemsInputs: gemsInputs,
     gemsCore: gemsCore,
     dockNames: function () {

@@ -36,6 +36,7 @@
       if (typeof saved.fishingDock === 'string' && saved.fishingDock) base.fishingDock = saved.fishingDock;
       if (isFinite(Number(saved.fishingPlaytime))) base.fishingPlaytime = Number(saved.fishingPlaytime);
       if (isFinite(Number(saved.gemsPerHour))) base.gemsPerHour = Number(saved.gemsPerHour);
+      if (saved.gemsManualRate !== undefined) base.gemsManualRate = !!saved.gemsManualRate;
       if (Array.isArray(saved.fishingUpgrades)) base.fishingUpgrades = saved.fishingUpgrades;
       if (Array.isArray(saved.fishingEnhance)) base.fishingEnhance = saved.fishingEnhance;
       if (Array.isArray(saved.fishingSkills)) base.fishingSkills = saved.fishingSkills;
@@ -182,11 +183,10 @@
     playRow.appendChild(playInput);
     host.appendChild(playRow);
 
-    var gemsRow = document.createElement('label');
-    gemsRow.className = 'check';
-    gemsRow.style.display = 'inline-flex';
-    gemsRow.style.gap = '8px';
+    var gemsRow = document.createElement('div');
+    gemsRow.className = 'controls';
     gemsRow.style.margin = '14px 0 0';
+    var gemsLabel = document.createElement('label');
     var gemsName = document.createElement('span');
     gemsName.textContent = 'Gems per hour';
     var gemsInput = document.createElement('input');
@@ -194,20 +194,50 @@
     gemsInput.min = '0';
     gemsInput.step = '1';
     gemsInput.style.width = '90px';
-    gemsInput.value = String(numGems(state.gemsPerHour));
+    var manual = !!state.gemsManualRate;
+    var gemRate = IOM.gemsIncome(state);
+    gemsInput.readOnly = !manual;
+    gemsInput.value = String(Math.round(gemRate));
+    gemsInput.title = manual
+      ? 'Your own figure, used for the time-to-afford column.'
+      : 'Net gems per hour from the Gems tab. Tick the box to type your own.';
     gemsInput.addEventListener('change', function () {
       var value = Number(gemsInput.value);
       if (!isFinite(value) || value < 0) {
-        gemsInput.value = String(numGems(state.gemsPerHour));
+        gemsInput.value = String(Math.round(IOM.gemsIncome(state)));
         return;
       }
       state.gemsPerHour = value;
       save();
       renderFishing();
     });
-    gemsRow.appendChild(gemsName);
-    gemsRow.appendChild(gemsInput);
+    gemsLabel.appendChild(gemsName);
+    gemsLabel.appendChild(gemsInput);
+    gemsRow.appendChild(gemsLabel);
+
+    var manualLabel = document.createElement('label');
+    manualLabel.className = 'check';
+    var manualBox = document.createElement('input');
+    manualBox.type = 'checkbox';
+    manualBox.checked = manual;
+    manualBox.addEventListener('change', function () {
+      state.gemsManualRate = manualBox.checked;
+      save();
+      renderFishing();
+    });
+    var manualText = document.createElement('span');
+    manualText.textContent = 'Type my own rate';
+    manualLabel.appendChild(manualBox);
+    manualLabel.appendChild(manualText);
+    gemsRow.appendChild(manualLabel);
     host.appendChild(gemsRow);
+
+    if (!manual && !state.version) {
+      var gemsHint = document.createElement('p');
+      gemsHint.className = 'hint';
+      gemsHint.textContent = 'Import an export to fill this from the Gems tab.';
+      host.appendChild(gemsHint);
+    }
 
     var warning = document.createElement('p');
     warning.className = 'notice';
@@ -424,6 +454,7 @@
     function changed() {
       save();
       renderGems();
+      renderFishing();
     }
 
     var m = IOM.gemsModel(state);
